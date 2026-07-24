@@ -1211,3 +1211,359 @@ name = "conversions5"
 dir = "23_conversions"
 hint = """
 Add `AsRef<str>` or `AsMut<u32>` as a trait bound to the functions."""
+
+# ==========================================================================
+# Deep Dive into Rust Internals · Advanced Track
+# Module order: M1 Ownership/Lifetimes/Smart Pointers -> M2 Data Structures ->
+#               M3 Async -> M4 Send/Sync -> M5 Debugging & Interviews
+# All exercises are std + safe; labs that require `unsafe` live in the
+# `deep-dive/` crate at the repo root.
+# ==========================================================================
+
+# MODULE 1 · OWNERSHIP — Move / Copy / Clone & the borrow checker
+
+[[exercises]]
+name = "ownership1"
+dir = "24_ownership_model"
+hint = """
+The helper takes `String` by value, which MOVES it and drops it at the end of
+the call — but the caller still needs `text` afterwards. Counting only READS the
+string, so borrow instead: change the signature from `fn count_chars(text: String)`
+to `fn count_chars(text: &str)`, and call it as `count_chars(&text)`. `&String`
+coerces to `&str`. Borrowing doesn't transfer ownership, so `text` stays usable."""
+
+[[exercises]]
+name = "ownership2"
+dir = "24_ownership_model"
+hint = """
+`let q = p;` is a MOVE for non-`Copy` types; after the move `p` is invalid, so the
+later `assert_eq!(p, ..)` is a use-after-move. Give the all-integer `Point` the
+`Copy` trait (Rust requires deriving `Clone` alongside it):
+`#[derive(Debug, PartialEq, Clone, Copy)]`. Now `let q = p;` is a bitwise copy and
+both `p` and `q` stay usable. Contrast `String`, which is not `Copy` and needs
+`.clone()` to get a second independent owner."""
+
+[[exercises]]
+name = "ownership3"
+dir = "24_ownership_model"
+hint = """
+`let first = &data[0];` is a shared borrow, while `data.push(..)` needs an
+exclusive (mutable) borrow; since `first` is used after the push, the shared borrow
+is still alive and the two overlap — violating aliasing XOR mutability. Because
+index 0 is an `i32` (a `Copy` type), copy the value out to end the borrow:
+`let first = data[0];` (drop the `&`), then `data.push(first + 10);`. Now no borrow
+of `data` is live during the push."""
+
+# MODULE 1 · LIFETIMES — lifetime parameters, elision, explicit annotations
+
+[[exercises]]
+name = "lifetimes4"
+dir = "25_lifetimes_deep"
+hint = """
+A struct that holds a reference must declare a lifetime — the error is "missing
+lifetime specifier". Add a lifetime parameter and tie the field to it:
+```
+struct Excerpt<'a> {
+    part: &'a str,
+}
+```
+This says "an `Excerpt<'a>` may not outlive the `&'a str` it borrows"."""
+
+[[exercises]]
+name = "lifetimes5"
+dir = "25_lifetimes_deep"
+hint = """
+Two reference parameters and a reference return: elision can't tell which input
+the result borrows from, so you must annotate. The return borrows from `prefix`,
+not `separator`, so give only `prefix` and the return type the same `'a`:
+```
+fn first_token<'a>(prefix: &'a str, separator: &str) -> &'a str
+```
+`separator` keeps its own (elided) lifetime. The test deliberately drops
+`separator` early to prove the result is tied only to `prefix`."""
+
+[[exercises]]
+name = "lifetimes6"
+dir = "25_lifetimes_deep"
+hint = """
+In a method, elision ties the returned reference to `&self` by default, so the
+result can't outlive the `Parser`; the test drops `parser` in an inner block and
+then uses `rest`, giving "does not live long enough". The value actually returned
+is the underlying `text` (lifetime `'a`), so annotate the method's return type
+explicitly to override the too-short default: `fn remainder(&self) -> &'a str { self.text }`."""
+
+# MODULE 1 · SMART POINTERS — Box / Rc·Weak / RefCell
+
+[[exercises]]
+name = "smartptr1"
+dir = "26_smart_pointers_deep"
+hint = """
+`Cons(i32, List)` stores a `List` inline, giving the type infinite size —
+"recursive type has infinite size". Put the tail behind a fixed-size pointer on the
+heap to break the recursion: `Cons(i32, Box<List>)`. Now each node is one `i32` plus
+one pointer — a known size. Wrap the successor node with `Box::new(...)` when
+building it."""
+
+[[exercises]]
+name = "smartptr2"
+dir = "26_smart_pointers_deep"
+hint = """
+A child should hold only a WEAK reference to its parent to avoid a reference
+cycle; `link_to_parent` must return a `Weak<Node>` pointing at `parent`. An empty
+body returns `()`, which mismatches `Weak<Node>` — a compile error. Downgrade with
+`Rc::downgrade` (the parameter is already `&Rc<Node>`, so pass `parent` directly):
+```
+fn link_to_parent(parent: &Rc<Node>) -> Weak<Node> {
+    Rc::downgrade(parent)
+}
+```
+A weak reference doesn't raise the strong count (`strong_count` unchanged,
+`weak_count` +1), and `.upgrade()` returns `Some(Rc)` while the parent is alive."""
+
+[[exercises]]
+name = "smartptr3"
+dir = "26_smart_pointers_deep"
+hint = """
+You only have a shared `&Rc<RefCell<Vec<i32>>>`; `RefCell`'s interior mutability
+lets you mutate the data through a shared reference. An empty body returns `()`,
+which mismatches the declared `usize` — a compile error. Complete it by borrowing
+mutably, pushing, and returning the new length:
+```
+let mut data = handle.borrow_mut();
+data.push(value);
+data.len()
+```
+Because several `Rc` handles point at the same cell, a change made through one
+handle is visible through another."""
+
+# MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
+
+[[exercises]]
+name = "linkedlist1"
+dir = "27_data_structures"
+hint = """
+The classic ownership puzzle. Each node OWNS the next via `Box`; "no next" is
+`None`.
+
+push: build a `Node` whose `next` is the old head, taken out with `self.head.take()`
+(which leaves `None` in place):
+```
+let node = Box::new(Node { value, next: self.head.take() });
+self.head = Some(node);
+```
+
+pop: you can't read `self.head` directly (that would move out of `&mut self`).
+`take()` the head, then `.map` to update the head and return the value:
+```
+self.head.take().map(|node| {
+    self.head = node.next;
+    node.value
+})
+```"""
+
+[[exercises]]
+name = "ringbuffer1"
+dir = "27_data_structures"
+hint = """
+A ring buffer (the core of `VecDeque`) wraps around by indexing modulo the
+capacity; the data itself never moves. The back slot is computed:
+`tail = (head + len) % capacity`.
+
+push_back: if full (`self.len == self.capacity()`) `return false`; otherwise
+```
+let tail = (self.head + self.len) % self.capacity();
+self.buf[tail] = Some(value);
+self.len += 1;
+true
+```
+
+pop_front: if empty (`self.len == 0`) `return None`; otherwise `self.buf[self.head].take()`
+to take the front, then `self.head = (self.head + 1) % self.capacity();`,
+`self.len -= 1;`, and return it."""
+
+[[exercises]]
+name = "hashtable1"
+dir = "27_data_structures"
+hint = """
+A separate-chaining hash map: `bucket_index` (already written) maps a key to a
+bucket, then you scan the bucket linearly.
+
+insert: compute `idx`, `let bucket = &mut self.buckets[idx];`, iterate and overwrite
+if the key already exists (then `return`), otherwise `bucket.push((key, value));`:
+```
+for entry in bucket.iter_mut() {
+    if entry.0 == key { entry.1 = value; return; }
+}
+bucket.push((key, value));
+```
+
+get: `self.buckets[idx].iter().find(|(k, _)| k == key).map(|(_, v)| *v)`
+(`i32` is `Copy`)."""
+
+# MODULE 3 · ASYNC — Future / Poll
+
+[[exercises]]
+name = "futures1"
+dir = "28_futures"
+hint = """
+This future is ready immediately. `poll`'s receiver is `Pin<&mut Self>`, but
+READING a field doesn't move the value, so you can write `self.0` directly. Just
+return `Poll::Ready(self.0)`."""
+
+[[exercises]]
+name = "futures2"
+dir = "28_futures"
+hint = """
+Before returning `Poll::Pending`, you must ask to be polled again later, or the
+task hangs forever. In the `else` branch, in order:
+1. `self.yielded = true;` (`YieldOnce` holds only a `bool`, so it's `Unpin` and you
+   can assign directly)
+2. `cx.waker().wake_by_ref();`
+3. return `Poll::Pending`"""
+
+[[exercises]]
+name = "futures3"
+dir = "28_futures"
+hint = """
+The heart of the module: hand-write the "await first, then await second" state
+machine with `loop { match this.state { .. } }`:
+- `State::PollingFirst`: `match Pin::new(&mut this.first).poll(cx)` — on `Ready(a)`
+  set `this.state = State::PollingSecond(a)` and loop again; on `Pending`
+  `return Poll::Pending`.
+- `State::PollingSecond(a)`: poll `this.second`; on `Ready(b)` set
+  `this.state = State::Done` and `return Poll::Ready((a, b))`; on `Pending`
+  `return Poll::Pending`.
+- `State::Done`: `panic!(..)`.
+The leaf futures are `Unpin`, so you can re-poll them with the safe
+`Pin::new(&mut ...)`."""
+
+[[exercises]]
+name = "futures4"
+dir = "28_futures"
+hint = """
+In an `async fn`, the last expression is its (ready) return value. Complete it as:
+```
+let x = double(a).await;
+let y = double(b).await;
+x + y
+```
+Each `.await` is a suspension point, exactly like a state in the hand-written state
+machine from the previous exercise."""
+
+# MODULE 3 · ASYNC — hand-written async runtime
+
+[[exercises]]
+name = "runtime1"
+dir = "29_async_runtime"
+hint = """
+Set the flag inside `wake`: `self.woken.store(true, Ordering::SeqCst);`. Note that
+`self` is an `Arc<Self>`, but auto-deref still lets you write `self.woken`."""
+
+[[exercises]]
+name = "runtime2"
+dir = "29_async_runtime"
+hint = """
+The core of an executor is a loop:
+```
+loop {
+    match future.as_mut().poll(&mut cx) {
+        Poll::Ready(value) => return value,
+        Poll::Pending => thread::park(),
+    }
+}
+```
+`park` blocks until the `ThreadWaker` calls `unpark` — that is what makes waiting
+cost zero CPU."""
+
+[[exercises]]
+name = "runtime3"
+dir = "29_async_runtime"
+hint = """
+Inside the `while let Ok(task) = ...` loop, poll the task once:
+```
+let waker = Waker::from(task.clone());
+let mut cx = Context::from_waker(&waker);
+let mut fut = task.future.lock().unwrap();
+let _ = fut.as_mut().poll(&mut cx);
+```
+When a task returns `Pending`, its `Waker` (`impl Wake for Task`) pushes it back onto
+the queue, so polling once per turn is enough."""
+
+[[exercises]]
+name = "runtime4"
+dir = "29_async_runtime"
+hint = """
+`poll` needs a `Pin<&mut F>`, but `future` is an unpinned owner. Pin it on the
+stack first: `let mut future = std::pin::pin!(future);`, then
+```
+match future.as_mut().poll(&mut cx) {
+    Poll::Ready(value) => Some(value),
+    Poll::Pending => None,
+}
+```"""
+
+# MODULE 4 · SEND / SYNC — the basis of fearless concurrency
+
+[[exercises]]
+name = "send_sync1"
+dir = "30_send_sync"
+hint = """
+`Rc<T>`'s reference count is a plain (non-atomic) integer, so mutating it from
+multiple threads would be a data race — which is why `Rc` is `!Send` and can't be
+moved into another thread. `thread::spawn` requires everything its closure captures
+to be `Send`, so the compiler reports `Rc<i32>` cannot be sent between threads
+safely. Fix: change the top `use std::rc::Rc;` to `use std::sync::Arc;` and replace
+every `Rc` in the body with `Arc` (`Arc::new`, `Arc::clone`). `Arc` is atomically
+reference-counted and is `Send + Sync`."""
+
+[[exercises]]
+name = "send_sync2"
+dir = "30_send_sync"
+hint = """
+`Arc<T>` only hands out `&T`, so you can't modify the inner value — `*counter += 1`
+won't compile (cannot assign to data in an Arc). Shared mutable state needs
+`Arc<Mutex<T>>`: make the counter `let counter = Arc::new(Mutex::new(0usize));`; in
+each thread do `*counter.lock().unwrap() += 1;` (the guard unlocks automatically when
+dropped); read the final value with `*counter.lock().unwrap()`. `Mutex` guarantees
+only one thread holds `&mut T` at a time."""
+
+[[exercises]]
+name = "send_sync3"
+dir = "30_send_sync"
+hint = """
+`Send`/`Sync` are auto traits: whether a struct is thread-safe depends on its
+least-safe field. `assert_send::<T>()` can only be instantiated when `T: Send`, so it
+is a compile-time assertion. Here `Shared { value: Rc<i32> }` is not `Send`/`Sync`
+because `Rc` is `!Send + !Sync`, so `assert_send::<Shared>()` won't compile. Fix:
+change the top `use std::rc::Rc;` to `use std::sync::Arc;`, make the field
+`value: Arc<i32>,`, and construct it with `Arc::new(value)`."""
+
+# MODULE 5 · DEBUGGING — debugging & interview drills
+
+[[exercises]]
+name = "debugging1"
+dir = "31_debugging"
+hint = """
+To print a type with `{:?}` / `{:#?}` it must implement `Debug`. Most types get it
+for free with a single `#[derive(Debug)]` above the `struct`. The derived `Debug`
+prints `Config { retries: 3, verbose: true }`."""
+
+[[exercises]]
+name = "debugging2"
+dir = "31_debugging"
+hint = """
+This code compiles but the tests fail — it's an off-by-one. `1..n` is a half-open
+range that excludes `n` itself, so `sum_to(5)` only adds 1+2+3+4=10. Use an inclusive
+range instead: `for i in 1..=n`. To debug, you can temporarily add `dbg!(sum);` inside
+the loop to watch it accumulate (just don't leave `dbg!` in finished code), or read
+the expected/actual values printed by the failing `assert_eq!`."""
+
+[[exercises]]
+name = "debugging3"
+dir = "31_debugging"
+hint = """
+`Display` (`{}`) can never be derived — you must write it by hand. An empty `fmt`
+body returns `()`, which mismatches `fmt::Result` and fails to compile. Write into the
+formatter `f` with `write!`, using `{:02x}` (two digits, zero-padded, lowercase hex):
+`write!(f, "#{:02x}{:02x}{:02x}", self.r, self.g, self.b)`. Note: no trailing
+semicolon, so it becomes the returned `fmt::Result`."""
