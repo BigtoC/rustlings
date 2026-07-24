@@ -1,0 +1,11 @@
+# Deep-dive labs for the advanced course. Unlike the rustlings exercises, these
+# deliberately use `unsafe` to reveal what the safe abstractions do underneath.
+# Run them with:  cargo test --manifest-path deep-dive/Cargo.toml
+[package]
+name = "deep-dive"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
