@@ -2,6 +2,9 @@
 exclude = [
   "tests/test_exercises",
   "dev",
+  # Deep-dive labs deliberately use `unsafe`, so they live outside the
+  # `unsafe_code = "forbid"` exercise workspace.
+  "deep-dive",
 ]
 
 [workspace.package]
