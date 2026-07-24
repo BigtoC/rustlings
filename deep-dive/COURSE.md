@@ -65,16 +65,16 @@ cd rustlings && rustlings         # start
 ### Module 2 · Data structures: reading and hand-writing
 
 | Directory / crate    | Exercise      | Focus                                                                                                   |
-| -------------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
+|----------------------|---------------|---------------------------------------------------------------------------------------------------------|
 | `27_data_structures` | `linkedlist1` | A **safe** singly linked list with `Option<Box<Node>>` (`Option::take` is key)                          |
 | `27_data_structures` | `ringbuffer1` | A `Vec`-backed ring buffer: `head`/`len` + modular wraparound — the core of `VecDeque`                  |
 | `27_data_structures` | `hashtable1`  | A separate-chaining hash map: `DefaultHasher` to pick a bucket + collision handling                     |
-| ``         | `unsafe_list` | A **doubly** linked list with `NonNull` **raw pointers**, just like the standard library's `LinkedList` |
+| ``                   | `unsafe_list` | A **doubly** linked list with `NonNull` **raw pointers**, just like the standard library's `LinkedList` |
 
 ### Module 3 · Async model, fully dissected — hand-written async runtime (the focus)
 
 | Directory / crate  | Exercise           | Focus                                                                                                                 |
-| ------------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+|--------------------|--------------------|-----------------------------------------------------------------------------------------------------------------------|
 | `28_futures`       | `futures1..2`      | The `Future`/`Poll` trait; `Poll::Pending` and using the `Waker` to ask to be re-polled                               |
 | `28_futures`       | `futures3`         | **Hand-written state machine**: exactly what an `async fn` desugars to                                                |
 | `28_futures`       | `futures4`         | `async`/`await` sugar == the state machine                                                                            |
@@ -82,8 +82,8 @@ cd rustlings && rustlings         # start
 | `29_async_runtime` | `runtime2`         | The executor core: the `block_on` poll loop (park/unpark)                                                             |
 | `29_async_runtime` | `runtime3`         | **Multi-task executor**: a ready-queue + a self-rescheduling `Waker` (the skeleton of tokio's current-thread runtime) |
 | `29_async_runtime` | `runtime4`         | Why `Pin` exists, and how to safely satisfy `poll`'s `Pin<&mut Self>`                                                 |
-| ``       | `raw_waker`        | Hand-written `RawWaker` + `RawWakerVTable` (four function pointers) — the real `Waker`                                |
-| ``       | `self_referential` | Self-referential struct + `Pin`/`PhantomPinned` — what `Pin` is really protecting                                     |
+| ``                 | `raw_waker`        | Hand-written `RawWaker` + `RawWakerVTable` (four function pointers) — the real `Waker`                                |
+| ``                 | `self_referential` | Self-referential struct + `Pin`/`PhantomPinned` — what `Pin` is really protecting                                     |
 
 **The async trinity**: `Future` defines the computation · `Waker` handles notification · `Pin` guarantees safety.
 
