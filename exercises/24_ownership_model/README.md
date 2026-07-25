@@ -20,10 +20,12 @@ of compile-time rules:
     not transferred.
   - **Clone**: `.clone()` — makes a genuine copy, yielding an independent second
     owner (at a cost).
-- A few "small and safely bitwise-copyable" types are `Copy` (integers, `bool`,
-  `char`, and structs composed entirely of `Copy` fields): passing them by value
-  **copies** instead of moving, so the original value remains usable. Types that
-  own heap allocations (`String`, `Vec<T>`) are **not** `Copy`.
+- A few "small and safely bitwise-copyable" primitives are `Copy` (integers,
+  `bool`, `char`): passing them by value **copies** instead of moving, so the
+  original value remains usable. A struct is never `Copy` automatically — even one
+  whose fields are all `Copy` is only *eligible* and stays a move type until you
+  opt in with `#[derive(Copy)]` (exactly what `ownership2` demonstrates). Types
+  that own heap allocations (`String`, `Vec<T>`) can never be `Copy`.
 
 ## The Golden Rule of the Borrow Checker
 
