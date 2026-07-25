@@ -1336,6 +1336,229 @@ data.len()
 Because several `Rc` handles point at the same cell, a change made through one
 handle is visible through another."""
 
+# DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
+# (Prerequisites the async and concurrency modules assume; std + 100% safe.)
+
+# TRAITS & ABSTRACTION · Trait objects & dispatch — dyn vs generics vs enum
+[[exercises]]
+name = "dispatch1"
+dir = "32_dispatch"
+hint = """
+A `Vec<T>` stores one concrete `T` per slot, laid out end to end, so it cannot
+hold both a `Circle` and a `Rectangle` at once. Erase the concrete type behind a
+trait object: the element type is `Box<dyn Shape>`, a fat pointer (data ptr +
+vtable ptr) that is the same size no matter which shape it points to. Return
+`vec![Box::new(Circle { radius: 1.0 }), Box::new(Rectangle { width: 2.0, height:
+3.0 })]` — each `Box::new(..)` coerces to `Box<dyn Shape>`. An empty body returns
+`()` and mismatches the declared `Vec<Box<dyn Shape>>` return type, which is the
+compile error you are seeing."""
+
+[[exercises]]
+name = "dispatch2"
+dir = "32_dispatch"
+hint = """
+E0038 means `Widget` is not dyn-compatible ("object safe"), so `Box<dyn Widget>`
+is rejected. The culprit is `fn duplicate(&self) -> Self`: a vtable needs a fixed,
+known return layout, but each implementor returns a differently sized `Self`, so
+that method cannot be dispatched through a trait object. Don't delete it — gate it
+off the vtable with `where Self: Sized`. Change the trait method to
+`fn duplicate(&self) -> Self where Self: Sized;` and add the same `where Self:
+Sized` bound to each impl's `duplicate`. That keeps `duplicate` callable on
+concrete `Button`/`Slider` while making `dyn Widget` legal again (`width` stays in
+the vtable)."""
+
+[[exercises]]
+name = "dispatch3"
+dir = "32_dispatch"
+hint = """
+`total_static` is the static-dispatch twin of `total_dynamic`: the body is
+identical — `shapes.iter().map(|s| s.area()).sum()` — only the dispatch differs.
+Because it is generic over one concrete `S: Shape`, the compiler monomorphizes it
+(one specialized, inlinable copy per `S`, larger binary, homogeneous slice), while
+`total_dynamic` shares a single copy and pays an indirect vtable call per element
+that cannot inline. Same answer, different cost model. An empty body returns `()`
+instead of `f64`, which is why it does not compile — return the sum."""
+
+[[exercises]]
+name = "dispatch4"
+dir = "32_dispatch"
+hint = """
+Enum dispatch replaces the heap `Box` and the vtable hop with a `match` whose arms
+inline like ordinary code — the price is a CLOSED variant set you must enumerate
+here (outside code cannot add a shape). Write `area` by matching every variant and
+destructuring its fields: `match self { Shape::Circle { radius } => PI * radius *
+radius, Shape::Rectangle { width, height } => width * height }`. An empty or
+non-exhaustive body will not compile: the function must return an `f64` on every
+path, and `match` must cover both variants."""
+
+# TRAITS & ABSTRACTION · Closures — Fn / FnMut / FnOnce
+[[exercises]]
+name = "closure1"
+dir = "33_closures"
+hint = """
+A closure captures the variables its body uses, and by default it captures them
+in the least-privileged way that works — here just a shared borrow of `name`. But
+`make_greeter` RETURNS the closure, so the closure outlives the function and
+thus outlives its local `name`; a borrow would dangle, which is exactly what
+E0373 ("closure may outlive the current function, but it borrows `name`")
+reports. Add the `move` keyword so the closure captures `name` BY VALUE and owns
+it: `move || format!("Hello, {name}!")`. Now the `String` lives inside the
+returned closure, so it is safe to call `g()` as many times as you like."""
+
+[[exercises]]
+name = "closure2"
+dir = "33_closures"
+hint = """
+Which closure trait a closure implements depends on how CALLING it must touch
+its captures. The test's `inc` does `count += 1`, so it mutates a capture and
+needs `&mut self` per call — that makes it `FnMut`, not the stricter `Fn` (`Fn`
+is the `&self`-only, read-only subset). Requiring `F: Fn()` therefore rejects it
+with E0525 ("...only implements `FnMut`"). Relax the bound to `F: FnMut()`. The
+`mut f` binding is already present, so each `f()` call can borrow `f` as `&mut`.
+Remember the hierarchy: every `Fn` is an `FnMut`, so asking for `FnMut` still
+accepts read-only closures too."""
+
+[[exercises]]
+name = "closure3"
+dir = "33_closures"
+hint = """
+The test's closure is `move || owned`: it captures the `String` by value and
+then RETURNS it, moving the value out of the closure. Moving a capture out is a
+once-only capability — after one call the value is gone — so the closure is
+`FnOnce`, not `Fn`. A `F: Fn() -> String` bound is too strict and the compiler
+reports that the closure "implements `FnOnce`, not `Fn`". Relax the bound to
+`F: FnOnce() -> String`; `FnOnce` takes `self`, which is exactly what consuming
+a capture requires. Ordering to remember: `Fn` implies `FnMut` implies `FnOnce`,
+so `FnOnce` is the most permissive bound and accepts the widest set of closures."""
+
+[[exercises]]
+name = "closure4"
+dir = "33_closures"
+hint = """
+Every closure that captures something is its own unique anonymous type, so the
+two arms `move |x| x + step` and `move |x| x - step` have DIFFERENT types. A
+return type of `-> impl Fn(i32) -> i32` promises exactly ONE concrete type, so
+the compiler can't reconcile the two arms and reports E0308 ("`if` and `else`
+have incompatible types"). The fix is a trait object that erases the concrete
+type behind a pointer + vtable (dynamic dispatch, like the trait-objects
+module): change the return type to `Box<dyn Fn(i32) -> i32>` and wrap each arm
+in `Box::new(...)`. `adder` needs no change — it returns the same closure type
+on every call, so `impl Fn` is fine there. (Note: closures that capture nothing
+can coerce to a plain `fn` pointer and would have unified — it's the captured
+`step` that keeps them distinct.)"""
+
+# TRAITS & ABSTRACTION · Iterators — implementing Iterator, custom adapters, laziness
+[[exercises]]
+name = "iter1"
+dir = "34_iterators"
+hint = """
+`Iterator` has ONE required method, `next`; everything else (`take`, `map`,
+`sum`, `collect`) is a default method built on it - so implementing `next` is
+all it takes to make `Fibonacci` fully iterable. An empty `next` body evaluates
+to `()`, not `Option<u64>`, which is the E0308 type mismatch you see. Yield the
+current value while advancing the pair:
+```
+let current = self.curr;
+self.curr = self.next;
+self.next += current;
+Some(current)
+```
+This iterator is infinite - it never returns `None`; `take(10)` is what stops
+it. (Write `self.next += current` rather than `self.next = current + self.next`
+to keep clippy happy.)"""
+
+[[exercises]]
+name = "iter2"
+dir = "34_iterators"
+hint = """
+An adapter is a struct that OWNS an inner iterator and computes lazily inside
+`next`. Empty body -> returns `()` not `Option`, hence the compile error. Pull
+the left element (the remembered one, or the first item), then the right one,
+remember it, and pair them:
+```
+let prev = match self.prev.take() {
+    Some(p) => p,
+    None => self.inner.next()?,
+};
+let cur = self.inner.next()?;
+self.prev = Some(cur.clone());
+Some((prev, cur))
+```
+`?` on an `Option` returns `None` early once `inner` is exhausted - that is how
+the adapter signals it is done, which is why a single-element input yields
+nothing."""
+
+[[exercises]]
+name = "iter3"
+dir = "34_iterators"
+hint = """
+This compiles (with an unused-`Map` / `must_use` warning) but the test fails
+because `seen` stays 0. Adapters like `map` are LAZY: calling `map` only builds
+a description and does ZERO work - the closure never runs until an EAGER
+consumer drives `next`. The `data.iter().map(|_| { seen += 1; });` line is
+constructed and immediately dropped, so nothing happens. Replace it with a real
+consumer:
+```
+data.iter().for_each(|_| seen += 1);
+```
+Use `for_each` (not `map`) - a `map` used only for side effects is exactly the
+no-op bug clippy warns about, and the solution must stay clippy-clean."""
+
+[[exercises]]
+name = "iter4"
+dir = "34_iterators"
+hint = """
+`for x in coll` desugars to `let mut it = IntoIterator::into_iter(coll); while
+let Some(x) = it.next() { .. }`, so implementing `IntoIterator` is what makes
+`Grid` usable in a `for` loop. `IntoIter` is declared as
+`std::vec::IntoIter<i32>`, which is precisely what `Vec<i32>` hands back, so
+defer to it:
+```
+fn into_iter(self) -> Self::IntoIter {
+    self.cells.into_iter()
+}
+```
+An empty body returns `()` instead of `Self::IntoIter` (the E0308 error). This
+is the consuming (by-value, `self`) form; std separately impls `IntoIterator`
+for `&Grid`/`&mut Grid` patterns to yield `&T`/`&mut T`."""
+
+# TRAITS & ABSTRACTION · Error design — custom errors, `?`, From / TryFrom, the Error trait
+[[exercises]]
+name = "err1"
+dir = "35_error_design"
+hint = """
+`expr?` on an `Err(e)` desugars to `return Err(From::from(e))`, so `?` can only
+convert a `ParseIntError` into a `ConfigError` if the `From<ParseIntError>` impl
+actually produces a `ConfigError`. The body here is empty, so `from` returns `()`
+instead of `Self` and the trait isn't satisfied (mismatched types). Fill it in with
+`ConfigError::Parse(e)`. That one impl is what lets the bare `?` in `parse_port`
+bridge the low-level parse error into your domain error — no `.map_err(...)` needed."""
+
+[[exercises]]
+name = "err2"
+dir = "35_error_design"
+hint = """
+A type is "a real error" when it implements `std::error::Error` (supertraits
+`Debug` + `Display`) and optionally overrides `source()`. Both bodies here are
+empty, so they return `()` and mismatch the required `fmt::Result` and
+`Option<&(dyn Error + 'static)>`. In `Display::fmt`, write to the formatter with no
+trailing semicolon so the `fmt::Result` is returned:
+`write!(f, "failed to parse record on line {}", self.line)`. In `source`, hand back
+the cause: `Some(&self.source)`. Returning `Some(&cause)` is what builds the chain
+that `Box<dyn Error>` and "caused by" reporters walk."""
+
+[[exercises]]
+name = "err3"
+dir = "35_error_design"
+hint = """
+`From` is for conversions that cannot fail; `TryFrom` is the fallible sibling with
+an associated `Error` type, used to validate at a type boundary so an invalid value
+can't be constructed. The empty `try_from` body has no `Result<Self, Self::Error>`
+to return, so it won't compile. Return `Ok(Percentage(value as u8))` only when the
+value is in range and `Err(format!("{value} is not in 0..=100"))` otherwise, e.g.
+`if (0..=100).contains(&value) { Ok(Percentage(value as u8)) } else { Err(...) }`.
+Implementing `TryFrom` also gives you `TryInto` for free."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
@@ -1538,6 +1761,57 @@ because `Rc` is `!Send + !Sync`, so `assert_send::<Shared>()` won't compile. Fix
 change the top `use std::rc::Rc;` to `use std::sync::Arc;`, make the field
 `value: Arc<i32>,`, and construct it with `Arc::new(value)`."""
 
+# MODULE 4 · ATOMICS — atomic operations & memory ordering
+[[exercises]]
+name = "atomics1"
+dir = "36_atomics"
+hint = """
+The per-thread loop body is empty, so nothing ever touches the shared counter and
+it stays 0 — the test expects 80_000. A plain `*counter += 1` across threads would
+be a data race (load, add, store can interleave and lose updates), and a Mutex is
+overkill for one integer. Instead do the whole read-modify-write in a single
+indivisible step: `c.fetch_add(1, Ordering::Relaxed);`. `Relaxed` is enough here
+because we only need the count itself to be atomic — we are not using it to publish
+any OTHER memory to the readers, so no stronger ordering is required."""
+
+[[exercises]]
+name = "atomics2"
+dir = "36_atomics"
+hint = """
+`handoff` must RETURN a `u64`, but the body ends after spawning the producer, so it
+implicitly returns `()` and will not compile (E0308). Synchronize purely through the
+atomics — do NOT join the producer:
+```
+while !flag.load(Ordering::Acquire) {
+    std::hint::spin_loop();
+}
+data.load(Ordering::Relaxed)
+```
+The Acquire load pairs with the producer's `Release` store of the SAME flag: that
+pairing creates a happens-before edge, so once you observe `true` you are guaranteed
+to see the earlier (even Relaxed) write of `data` — never the initial 0. With
+Relaxed on both sides the CPU/compiler could reorder the writes and let you read 0.
+`std::hint::spin_loop()` keeps the busy-wait idiomatic and CPU-friendly."""
+
+[[exercises]]
+name = "atomics3"
+dir = "36_atomics"
+hint = """
+`try_lock` must return a `bool`, but its body is empty, so it implicitly returns `()`
+and will not compile (E0308). A lock is just an atomic flag plus a compare-and-swap:
+atomically flip `locked` from `false` to `true`, and report who won:
+```
+self.locked
+    .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+    .is_ok()
+```
+Exactly one thread can win that CAS race. `Acquire` on the successful lock pairs with
+the `Release` store in `unlock`, so the previous holder's critical section is visible
+to the next holder. Real spinlocks loop on `compare_exchange_weak`, which may fail
+SPURIOUSLY (report `Err` even when the value matched) but compiles to cheaper code on
+some CPUs; retrying in a loop absorbs the spurious failures. `lock` already spins with
+`std::hint::spin_loop()` until `try_lock` succeeds."""
+
 # MODULE 5 · DEBUGGING — debugging & interview drills
 
 [[exercises]]
@@ -1552,11 +1826,13 @@ prints `Config { retries: 3, verbose: true }`."""
 name = "debugging2"
 dir = "31_debugging"
 hint = """
-This code compiles but the tests fail — it's an off-by-one. `1..n` is a half-open
-range that excludes `n` itself, so `sum_to(5)` only adds 1+2+3+4=10. Use an inclusive
-range instead: `for i in 1..=n`. To debug, you can temporarily add `dbg!(sum);` inside
-the loop to watch it accumulate (just don't leave `dbg!` in finished code), or read
-the expected/actual values printed by the failing `assert_eq!`."""
+This compiles but the large-input test blows up: `acc += v` overflows once the
+running total passes `u32::MAX`. Rust does not ignore that — in debug builds the
+overflow check PANICS ("attempt to add with overflow"), and in release builds the
+value silently WRAPS around to a small wrong number. Either way `+=` is not what
+you want here. Pick the behavior on purpose: `checked_add` returns an `Option`
+(`None` on overflow), `wrapping_add` wraps deliberately, and `saturating_add`
+clamps at `u32::MAX`. We want to clamp, so write `acc = acc.saturating_add(v);`."""
 
 [[exercises]]
 name = "debugging3"
@@ -1567,3 +1843,26 @@ body returns `()`, which mismatches `fmt::Result` and fails to compile. Write in
 formatter `f` with `write!`, using `{:02x}` (two digits, zero-padded, lowercase hex):
 `write!(f, "#{:02x}{:02x}{:02x}", self.r, self.g, self.b)`. Note: no trailing
 semicolon, so it becomes the returned `fmt::Result`."""
+
+[[exercises]]
+name = "debugging4"
+dir = "31_debugging"
+hint = """
+This compiles but panics at runtime with `BorrowMutError` ("already borrowed").
+`RefCell` moves the borrow check to run time, but the rule is unchanged: a live
+shared `borrow()` and an exclusive `borrow_mut()` may not overlap. `let current =
+cell.borrow();` returns a `Ref` guard that keeps the shared borrow alive for the
+whole `if` block, so the `borrow_mut()` inside it conflicts. End the shared borrow
+first by copying the value out — `let current = *cell.borrow();` — so the temporary
+guard drops at the end of that statement, then compare and `borrow_mut()`."""
+
+[[exercises]]
+name = "debugging5"
+dir = "31_debugging"
+hint = """
+This is a COMPILE error (E0502), not a runtime bug — Rust makes iterator
+invalidation impossible. `v.iter()` borrows `v` immutably for the whole loop, so
+`v.remove(i)` cannot take the `&mut` borrow it needs at the same time. Don't try to
+patch the indices (a forward index-remove would also SKIP elements, since `remove`
+shifts everything left). Replace the entire loop with one safe in-place pass:
+`v.retain(|&x| x % 2 != 0);`, which keeps the odd numbers and drops the evens."""
