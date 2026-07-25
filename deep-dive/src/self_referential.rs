@@ -63,10 +63,18 @@ impl SelfRef {
         unsafe { &*self.data_ptr }
     }
 
-    /// Expose the numeric address of the self-referential pointer, so tests can
-    /// check that "the address stays stable after pinning".
+    /// Expose the numeric address stored in the self-referential pointer (the
+    /// value captured back in `new`).
     pub fn ptr_addr(self: Pin<&Self>) -> usize {
         self.data_ptr as usize
+    }
+
+    /// The *current* address of the `data` field itself (not its heap buffer —
+    /// that would be `data()`). After pinning this never changes, so it must
+    /// still equal `ptr_addr`; the gap between the two is exactly what a move
+    /// would open up.
+    pub fn data_field_addr(self: Pin<&Self>) -> usize {
+        &self.get_ref().data as *const String as usize
     }
 }
 
@@ -83,13 +91,15 @@ mod tests {
     }
 
     #[test]
-    fn address_is_stable_after_pinning() {
+    fn self_pointer_still_targets_field_after_pinning() {
         let s = SelfRef::new("world".to_string());
-        let first = s.as_ref().ptr_addr();
-        let second = s.as_ref().ptr_addr();
-        assert_ne!(first, 0);
-        // The address no longer changes after pinning; that is exactly the
-        // precondition for the raw pointer to stay valid.
-        assert_eq!(first, second);
+        let stored = s.as_ref().ptr_addr(); // captured during `new`
+        let live = s.as_ref().data_field_addr(); // where `data` actually lives now
+        assert_ne!(stored, 0);
+        // The self-pointer set during construction STILL points exactly at the
+        // `data` field: proof the value did not move after being pinned. This is
+        // the invariant `data_via_ptr` relies on for soundness — had `new`
+        // returned an un-pinned value that was then moved, these would differ.
+        assert_eq!(stored, live);
     }
 }

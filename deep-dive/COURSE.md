@@ -6,7 +6,7 @@
 >
 > Design principles:
 >
-> - The **graded exercises** (`exercises/24_*` – `31_*`) are all **std + 100% safe**,
+> - The **graded exercises** (`exercises/24_*` – `36_*`) are all **std + 100% safe**,
 >   so they can be validated automatically by `rustlings dev check` (each exercise
 >   "fails while unsolved (compile/test error)"; each solution "passes + clippy
 >   `-D warnings` + rustfmt").
@@ -52,7 +52,7 @@ cd rustlings && rustlings         # start
 > Maintainer check of the whole course: `cargo dev check` (compiles and tests every
 > exercise and solution).
 
-## Course map (against the five modules)
+## Course map
 
 ### Module 1 · Ownership / Lifetimes / Memory model
 
@@ -62,14 +62,28 @@ cd rustlings && rustlings         # start
 | `25_lifetimes_deep`      | `lifetimes4..6` | Lifetime parameters, structs holding references, lifetimes in `impl`, elision, `'static`                                  |
 | `26_smart_pointers_deep` | `smartptr1..3`  | `Box<T>` heap allocation & recursive types; `Rc`/`Weak` shared ownership & breaking cycles; `RefCell` interior mutability |
 
+### Traits & Abstraction · the trait-system prerequisites (before async & concurrency)
+
+> All **std + 100% safe**. Ordered right after smart pointers because the async
+> and concurrency modules quietly assume closures and dynamic dispatch.
+
+| Directory         | Exercises      | Focus                                                                                                                |
+|-------------------|----------------|----------------------------------------------------------------------------------------------------------------------|
+| `32_dispatch`     | `dispatch1..4` | Trait objects (`Box<dyn>` fat pointers), object safety (`where Self: Sized`), static vs dynamic vs **enum** dispatch |
+| `33_closures`     | `closure1..4`  | Capture modes & `move`; the `Fn` / `FnMut` / `FnOnce` hierarchy; returning `impl Fn` vs `Box<dyn Fn>`                |
+| `34_iterators`    | `iter1..4`     | Implementing `Iterator` (just `next`); a custom lazy adapter; adapter **laziness**; `IntoIterator` for `for` loops   |
+| `35_error_design` | `err1..3`      | `?` as `From::from`; custom error enums; `Display` + `Error::source()` chains; `From` vs `TryFrom`                   |
+| ``                | `vtable_lab`   | The `&dyn Trait` fat pointer built by hand — a data pointer + a static table of function pointers                    |
+
 ### Module 2 · Data structures: reading and hand-writing
 
-| Directory / crate    | Exercise      | Focus                                                                                                   |
-|----------------------|---------------|---------------------------------------------------------------------------------------------------------|
-| `27_data_structures` | `linkedlist1` | A **safe** singly linked list with `Option<Box<Node>>` (`Option::take` is key)                          |
-| `27_data_structures` | `ringbuffer1` | A `Vec`-backed ring buffer: `head`/`len` + modular wraparound — the core of `VecDeque`                  |
-| `27_data_structures` | `hashtable1`  | A separate-chaining hash map: `DefaultHasher` to pick a bucket + collision handling                     |
-| ``                   | `unsafe_list` | A **doubly** linked list with `NonNull` **raw pointers**, just like the standard library's `LinkedList` |
+| Directory / crate    | Exercise      | Focus                                                                                                    |
+|----------------------|---------------|----------------------------------------------------------------------------------------------------------|
+| `27_data_structures` | `linkedlist1` | A **safe** singly linked list with `Option<Box<Node>>` (`Option::take` is key)                           |
+| `27_data_structures` | `ringbuffer1` | A `Vec`-backed ring buffer: `head`/`len` + modular wraparound — the core of `VecDeque`                   |
+| `27_data_structures` | `hashtable1`  | A separate-chaining hash map: `DefaultHasher` to pick a bucket + collision handling                      |
+| ``                   | `unsafe_list` | A **doubly** linked list with `NonNull` **raw pointers**, just like the standard library's `LinkedList`  |
+| ``                   | `raw_vec`     | `Vec` from scratch: `Layout`/`alloc`/`realloc` growth, `ptr::write`/`read`, and a `Drop` that frees once |
 
 ### Module 3 · Async model, fully dissected — hand-written async runtime (the focus)
 
@@ -87,24 +101,31 @@ cd rustlings && rustlings         # start
 
 **The async trinity**: `Future` defines the computation · `Waker` handles notification · `Pin` guarantees safety.
 
-### Module 4 · Advanced: `Send` / `Sync` and fearless concurrency
+### Module 4 · Advanced: `Send` / `Sync`, atomics, and fearless concurrency
 
-| Directory      | Exercise     | Focus                                                                      |
-| -------------- | ------------ | -------------------------------------------------------------------------- |
-| `30_send_sync` | `send_sync1` | `Rc` is `!Send`; use `Arc` across threads                                  |
-| `30_send_sync` | `send_sync2` | `Arc<Mutex<T>>` for shared mutable state                                   |
-| `30_send_sync` | `send_sync3` | Inferring the `Send`/`Sync` marker traits, and making a type `Send + Sync` |
+| Directory      | Exercise     | Focus                                                                                 |
+|----------------|--------------|---------------------------------------------------------------------------------------|
+| `30_send_sync` | `send_sync1` | `Rc` is `!Send`; use `Arc` across threads                                             |
+| `30_send_sync` | `send_sync2` | `Arc<Mutex<T>>` for shared mutable state                                              |
+| `30_send_sync` | `send_sync3` | Inferring the `Send`/`Sync` marker traits, and making a type `Send + Sync`            |
+| `36_atomics`   | `atomics1`   | Lock-free `AtomicUsize` counter with `fetch_add(Relaxed)`                             |
+| `36_atomics`   | `atomics2`   | `Release`/`Acquire` publish-subscribe: the happens-before edge that publishes data    |
+| `36_atomics`   | `atomics3`   | A CAS-based spinlock (`compare_exchange` + `spin_loop`)                               |
+| ``             | `myarc`      | `Arc` from scratch: `Relaxed` clone, `Release` drop + `Acquire` fence before free     |
+| ``             | `loom_lab`   | Model-check the `atomics2` handoff under `loom` (`--cfg loom`) — why `Relaxed` breaks |
 
-> For the outline's `unsafe` use cases, see the three `` labs (each has `// SAFETY:` comments).
+> The `unsafe` use cases live in the [``](deep-dive/) labs, each with `// SAFETY:` comments.
 > "Read the serde/tokio source" and "the rustc frontend: AST/HIR/MIR" are further reading — see the links in each README.
 
 ### Module 5 · Interview & debugging practice
 
-| Directory      | Exercise     | Focus                                                                      |
-| -------------- | ------------ | -------------------------------------------------------------------------- |
-| `31_debugging` | `debugging1` | `#[derive(Debug)]` + `{:?}` / `{:#?}`                                      |
-| `31_debugging` | `debugging2` | Locate and fix a logic bug (reason backwards from debug output/assertions) |
-| `31_debugging` | `debugging3` | Implement `Display` / `Debug` by hand                                      |
+| Directory      | Exercise     | Focus                                                                                                    |
+|----------------|--------------|----------------------------------------------------------------------------------------------------------|
+| `31_debugging` | `debugging1` | `#[derive(Debug)]` + `{:?}` / `{:#?}`                                                                    |
+| `31_debugging` | `debugging2` | Integer overflow: **panics** in debug, silently **wraps** in release — `checked`/`saturating`/`wrapping` |
+| `31_debugging` | `debugging3` | Implement `Display` / `Debug` by hand                                                                    |
+| `31_debugging` | `debugging4` | `RefCell` runtime `BorrowMutError`: aliasing-XOR-mutability enforced at run time                         |
+| `31_debugging` | `debugging5` | Iterator invalidation caught at **compile time**; fix with `retain`                                      |
 
 High-frequency interview topics (ownership, borrowing, lifetimes, `Send`/`Sync`, the
 async model) are spread across the exercises above; after finishing each module, use

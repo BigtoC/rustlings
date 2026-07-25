@@ -9,3 +9,14 @@ publish = false
 
 [lib]
 path = "src/lib.rs"
+
+# `loom` is pulled in ONLY under `--cfg loom`, so a plain `cargo test` neither
+# fetches nor builds it. The `loom_lab` module (also `#[cfg(loom)]`) then swaps
+# in loom's model-checking atomics to explore every thread interleaving.
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+
+# `loom` is a known custom cfg (set via RUSTFLAGS="--cfg loom"); declare it so the
+# unexpected_cfgs lint stays quiet on normal builds.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
