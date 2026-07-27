@@ -6,6 +6,11 @@
 // waking a task simply pushes it back onto the ready-queue, so a task that
 // returned `Pending` gets polled again only once it can make progress.
 //
+// The other half of that bookkeeping is knowing when a task is DONE: a `Waker`
+// may fire after its future has completed, and a completed future must never be
+// polled again (an `async` block panics if you try). So the executor drops the
+// future as soon as it returns `Ready`.
+//
 // This is exactly the design of tokio's current-thread runtime, minus the I/O
 // reactor and the timer wheel.
 
@@ -21,7 +26,12 @@ use std::task::{Context, Poll, Wake, Waker};
 type BoxFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 struct Task {
-    future: Mutex<BoxFuture>,
+    // `None` once the future has completed. A `Waker` is allowed to fire after
+    // its task finished, but polling a completed future is NOT allowed — an
+    // `async` block panics with "`async fn` resumed after completion". So the
+    // executor drops the future the moment it returns `Ready`, and a later
+    // wake-up for that task then finds an empty slot and does nothing.
+    future: Mutex<Option<BoxFuture>>,
     // Cloning the task and sending it here re-schedules it.
     ready_queue: Sender<Arc<Task>>,
 }
@@ -50,7 +60,7 @@ impl Executor {
 
     fn spawn(&self, future: impl Future<Output = ()> + Send + 'static) {
         let task = Arc::new(Task {
-            future: Mutex::new(Box::pin(future)),
+            future: Mutex::new(Some(Box::pin(future))),
             ready_queue: self.spawner.clone(),
         });
         let _ = self.spawner.send(task);
@@ -59,15 +69,12 @@ impl Executor {
     // Run until the ready-queue is empty.
     fn run(&self) {
         while let Ok(task) = self.ready_queue.try_recv() {
-            // TODO: Poll this task once.
-            //   1. Build a `Waker` from the task:  `Waker::from(task.clone())`.
-            //   2. Make a `Context` from it:       `Context::from_waker(&waker)`.
-            //   3. Lock the task's future and poll it:
-            //        `let mut fut = task.future.lock().unwrap();`
-            //        `let _ = fut.as_mut().poll(&mut cx);`
-            //   If it is still `Pending`, its waker will push it back onto the
-            //   queue when it can progress. Right now `run` does nothing, so the
-            //   test below will fail until you poll the task.
+            // TODO: Poll this task once, and record whether it finished. Lock
+            // `task.future`; an empty slot means the task already completed and
+            // this is a stale wake-up, so there is nothing to do. Otherwise build
+            // a `Waker` from the task, poll the future through a `Context` made
+            // from that waker, and empty the slot once the poll returns `Ready`.
+            // Right now `run` does nothing, so the tests below will fail.
         }
     }
 }
@@ -122,5 +129,36 @@ mod tests {
 
         executor.run();
         assert_eq!(counter.load(Ordering::SeqCst), 3);
+    }
+
+    // A future that wakes itself and then finishes in the SAME poll, so the
+    // executor is left holding a wake-up for a task that is already done.
+    struct WakeThenFinish;
+
+    impl Future for WakeThenFinish {
+        type Output = ();
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+            cx.waker().wake_by_ref();
+            Poll::Ready(())
+        }
+    }
+
+    #[test]
+    fn a_stale_wakeup_does_not_repoll_a_finished_task() {
+        let counter = Arc::new(AtomicU32::new(0));
+        let executor = Executor::new();
+
+        let counter_clone = counter.clone();
+        executor.spawn(async move {
+            WakeThenFinish.await;
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        // Without the completed-task check in `run`, the re-queued task would be
+        // polled a second time and the finished `async` block would panic with
+        // "`async fn` resumed after completion".
+        executor.run();
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 }

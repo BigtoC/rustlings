@@ -17,7 +17,7 @@ And what ties them together to drive everything is the **Executor** (`runtime2` 
 
 1. **runtime1** — Safely construct a `Waker` using `std::task::Wake` + `Arc`.
 2. **runtime2** — Write the core of an executor: the `poll` loop in `block_on` (park/unpark, zero-CPU waiting).
-3. **runtime3** — **Key exercise**: a multi-task executor. A ready-queue (`mpsc` channel) plus a `Waker` that re-enqueues its own task. This is the skeleton of `tokio`'s current-thread runtime.
+3. **runtime3** — **Key exercise**: a multi-task executor. A ready-queue (`mpsc` channel) plus a `Waker` that re-enqueues its own task, and the bookkeeping that tells a finished task apart from a pending one — a waker may fire after its future completed, and a completed future must never be polled again. This is the skeleton of `tokio`'s current-thread runtime.
 4. **runtime4** — Why `Pin` exists, and how to use `pin!` / `Box::pin` to safely satisfy `poll`'s `Pin<&mut Self>` requirement.
 
 ## `std::task::Wake` vs `RawWaker`
