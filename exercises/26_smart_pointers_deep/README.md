@@ -31,6 +31,8 @@ The three most common ones each have their own role:
 
 1. **smartptr1** — `Box<T>` and recursive types: wrap the tail of a cons list in
    `Box<List>`, or compilation fails with "recursive type has infinite size."
+   Note what `Box` does *not* buy you: both a recursive walk over the chain and
+   the compiler's derived drop glue still cost one stack frame per node.
 2. **smartptr2** — `Rc<T>` shared ownership + `strong_count`, plus using `Weak<T>`
    (child → parent) to avoid reference cycles. Complete the links with
    `Rc::downgrade`, and assert the strong/weak counts and `upgrade`.
