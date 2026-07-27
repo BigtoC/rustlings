@@ -59,16 +59,11 @@ impl Future for Sequence {
         // leaves with the safe `Pin::new(&mut ...)`.
         let this = self.get_mut();
 
-        // TODO: Implement the state machine with a `loop { match this.state { .. } }`:
-        //   - `State::PollingFirst`: poll `Pin::new(&mut this.first)`. On
-        //     `Poll::Ready(a)`, set `this.state = State::PollingSecond(a)` and
-        //     loop again. On `Poll::Pending`, `return Poll::Pending`.
-        //   - `State::PollingSecond(a)`: poll `Pin::new(&mut this.second)`. On
-        //     `Poll::Ready(b)`, set `this.state = State::Done` and
-        //     `return Poll::Ready((a, b))`. On `Poll::Pending`, `return Poll::Pending`.
-        //   - `State::Done`: `panic!("polled after completion")`.
-        // Until you return a `Poll` from every path, this exercise will not
-        // compile (the function is missing its return value).
+        // TODO: Drive the two leaves in sequence: loop over `this.state`, advance
+        // the state on each `Poll::Ready` (carrying the first result forward),
+        // and pass `Poll::Pending` straight back to the caller. The leaves are
+        // `Unpin`, so the safe `Pin::new(&mut ..)` is enough to poll them. Until
+        // every path returns a `Poll`, this exercise will not compile.
     }
 }
 
