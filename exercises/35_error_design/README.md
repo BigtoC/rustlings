@@ -39,9 +39,11 @@ display, and safe to build.
    `Some(&self.source)` from `source()` so the cause chain is walkable. Empty
    bodies return `()` and mismatch the required `fmt::Result` / `Option<...>`.
 3. **err3** — `TryFrom` for validated construction: implement
-   `TryFrom<i32> for Percentage`, accepting only `0..=100` and returning an
-   `Err(String)` otherwise, so an out-of-range `Percentage` cannot exist. The
-   free `TryInto` falls out of the same impl.
+   `TryFrom<i32> for Percentage`, accepting only `0..=100` and returning the
+   provided `OutOfRange` error otherwise, so an out-of-range `Percentage` cannot
+   exist. Note that the associated `Error` is a real error type (`Debug` +
+   `Display` + `Error`, as in part 2) rather than a `String`. The free `TryInto`
+   falls out of the same impl.
 
 ## Further Reading
 
