@@ -1456,16 +1456,23 @@ hint = """
 `sum`, `collect`) is a default method built on it - so implementing `next` is
 all it takes to make `Fibonacci` fully iterable. An empty `next` body evaluates
 to `()`, not `Option<u64>`, which is the E0308 type mismatch you see. Yield the
-current value while advancing the pair:
+current value while advancing the pair, and let `checked_add` decide where the
+sequence has to stop:
 ```
 let current = self.curr;
+let next = self.next.checked_add(current)?;
 self.curr = self.next;
-self.next += current;
+self.next = next;
 Some(current)
 ```
-This iterator is infinite - it never returns `None`; `take(10)` is what stops
-it. (Write `self.next += current` rather than `self.next = current + self.next`
-to keep clippy happy.)"""
+Compute the sum BEFORE assigning anything: the `?` then bails with the state
+untouched, so the iterator stays exhausted instead of yielding nonsense. F(94) is
+the first Fibonacci number a `u64` cannot hold, and since each step works out the
+number two ahead before yielding, the sequence ends after 92 values. A plain
+`self.next += current` would panic with "attempt to add with overflow" in debug
+builds and silently wrap in release - see `31_debugging/debugging2`. Short of that
+limit nothing stops the iterator on its own; `take(10)` is what ends the first
+test."""
 
 [[exercises]]
 name = "iter2"
@@ -1501,8 +1508,9 @@ consumer:
 ```
 data.iter().for_each(|_| seen += 1);
 ```
-Use `for_each` (not `map`) - a `map` used only for side effects is exactly the
-no-op bug clippy warns about, and the solution must stay clippy-clean."""
+Use `for_each` (not `map`) - a `map` kept only for its side effect is exactly the
+no-op bug that the `#[must_use]` on std's adapters, via rustc's `unused_must_use`
+lint, exists to warn about."""
 
 [[exercises]]
 name = "iter4"
@@ -1554,10 +1562,18 @@ hint = """
 `From` is for conversions that cannot fail; `TryFrom` is the fallible sibling with
 an associated `Error` type, used to validate at a type boundary so an invalid value
 can't be constructed. The empty `try_from` body has no `Result<Self, Self::Error>`
-to return, so it won't compile. Return `Ok(Percentage(value as u8))` only when the
-value is in range and `Err(format!("{value} is not in 0..=100"))` otherwise, e.g.
-`if (0..=100).contains(&value) { Ok(Percentage(value as u8)) } else { Err(...) }`.
-Implementing `TryFrom` also gives you `TryInto` for free."""
+to return, so it won't compile. Range-check the value and pick one of two arms:
+```
+if (0..=100).contains(&value) {
+    Ok(Percentage(value as u8))
+} else {
+    Err(OutOfRange(value))
+}
+```
+`OutOfRange` is already written for you above - and note that it is a REAL error
+type (`Debug` + `Display` + `Error`) rather than a `String`, which is what lets a
+caller match on it, print it, and wrap it with `?`. Implementing `TryFrom` also
+gives you `TryInto` for free."""
 
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
@@ -1702,15 +1718,24 @@ cost zero CPU."""
 name = "runtime3"
 dir = "29_async_runtime"
 hint = """
-Inside the `while let Ok(task) = ...` loop, poll the task once:
+Inside the `while let Ok(task) = ...` loop, lock the future slot, skip a task that
+has already finished, then poll it once and clear the slot when it completes:
 ```
+let mut slot = task.future.lock().unwrap();
+let Some(future) = slot.as_mut() else {
+    continue;
+};
 let waker = Waker::from(task.clone());
 let mut cx = Context::from_waker(&waker);
-let mut fut = task.future.lock().unwrap();
-let _ = fut.as_mut().poll(&mut cx);
+if future.as_mut().poll(&mut cx).is_ready() {
+    *slot = None;
+}
 ```
 When a task returns `Pending`, its `Waker` (`impl Wake for Task`) pushes it back onto
-the queue, so polling once per turn is enough."""
+the queue, so polling once per turn is enough. The `None` check is what makes the
+second test pass: a waker can re-queue a task that then finishes in the same poll,
+and re-polling a completed `async` block panics with "`async fn` resumed after
+completion"."""
 
 [[exercises]]
 name = "runtime4"
