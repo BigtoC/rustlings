@@ -29,14 +29,13 @@ impl SpinLock {
     }
 
     fn try_lock(&self) -> bool {
-        // TODO: attempt to flip `locked` from `false` to `true` in one atomic
-        // step and report whether we won. Use `compare_exchange` with `Acquire`
-        // on success and `Relaxed` on failure, then return `.is_ok()`:
-        //   self.locked
-        //       .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-        //       .is_ok()
-        // `try_lock` must RETURN a `bool`; leaving the body empty will not
-        // compile (missing return value).
+        // TODO: Flip `locked` from `false` to `true` in ONE atomic step with
+        // `compare_exchange`, and report whether we won the race. It takes two
+        // orderings: the SUCCESS one is what pairs with the `Release` store in
+        // `unlock` below, so it has to be strong enough to publish the previous
+        // holder's critical section to us; the FAILURE one guards a read that
+        // learned nothing, so it can be the cheapest. `try_lock` must return a
+        // `bool`, so the empty body will not compile.
     }
 
     fn lock(&self) {
