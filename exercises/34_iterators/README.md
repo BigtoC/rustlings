@@ -22,8 +22,8 @@ Rust's iterators are a zero-cost abstraction built from two small traits:
 - **Iterators are lazy.** Building an adapter does **zero** work; nothing runs
   until an **eager consumer** (`for_each`, `collect`, `count`, `sum`, a `for`
   loop, ...) starts calling `next` to pull values through. A `map` whose result
-  is never consumed is a no-op - a real, silent bug that clippy's `#[must_use]`
-  is designed to catch.
+  is never consumed is a no-op - a real, silent bug that the `#[must_use]` std
+  puts on its adapters, via rustc's `unused_must_use` lint, is designed to catch.
 - **`IntoIterator` is what `for` loops require** - not `Iterator` directly.
   `for x in coll` desugars to `let mut it = IntoIterator::into_iter(coll); while
   let Some(x) = it.next() { .. }`. Implementing it is what makes your own type
@@ -31,9 +31,11 @@ Rust's iterators are a zero-cost abstraction built from two small traits:
 
 ## Exercise Path
 
-1. **iter1** — Implement `Iterator` for an infinite `Fibonacci` by writing only
+1. **iter1** — Implement `Iterator` for an unbounded `Fibonacci` by writing only
    `next`. Then watch `take`, `map`, and `sum` - all default methods - work on
-   top of it without any extra code.
+   top of it without any extra code. Nothing stops the sequence except the range
+   of `u64`, and `checked_add` is how you report that honestly instead of
+   panicking on overflow.
 2. **iter2** — Write a custom lazy adapter, `Pairwise`, that owns an inner
    iterator and yields overlapping neighbour pairs. Uses `?` on `Option` inside
    `next` to report exhaustion.

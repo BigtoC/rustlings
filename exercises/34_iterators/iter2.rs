@@ -25,16 +25,11 @@ where
     type Item = (I::Item, I::Item);
 
     fn next(&mut self) -> Option<Self::Item> {
-        // TODO: Produce the next overlapping pair by pulling from `self.inner`.
-        //   - The left element is the remembered one if present, otherwise the
-        //     next item from `inner`:
-        //       `let prev = match self.prev.take() { Some(p) => p, None => self.inner.next()? };`
-        //     (`?` on an `Option` returns `None` early when the inner iterator is
-        //     exhausted - that is how the adapter reports "done".)
-        //   - The right element is the following item: `let cur = self.inner.next()?;`
-        //   - Remember `cur` for next time (`self.prev = Some(cur.clone());`) and
-        //     return `Some((prev, cur))`.
-        // Without a returned `Option`, this exercise will not compile.
+        // TODO: Return the next overlapping pair, pulling elements from
+        // `self.inner` and using `self.prev` to remember the one that has to be
+        // paired again on the following call. `?` on an `Option` is how an
+        // adapter reports "done". An empty body has type `()`, not `Option`, so
+        // this will not compile until you return a pair.
     }
 }
 
