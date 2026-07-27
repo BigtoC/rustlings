@@ -49,6 +49,40 @@ jobs:
       - uses: swatinem/rust-cache@v2
       - name: rustlings dev check
         run: cargo dev check --require-solutions
+  # `deep-dive` is excluded from the workspace (it deliberately uses `unsafe`), so
+  # none of the jobs above reach it. Gate it explicitly instead.
+  deep-dive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: swatinem/rust-cache@v2
+        with:
+          # `deep-dive` is its own workspace root and builds into `deep-dive/target`.
+          workspaces: deep-dive -> target
+      - name: rustfmt
+        run: cargo fmt --manifest-path deep-dive/Cargo.toml --check
+      - name: Clippy
+        run: cargo clippy --manifest-path deep-dive/Cargo.toml --all-targets -- --deny warnings
+      # `loom_lab` is `#[cfg(loom)]`, so the step above never compiles it. Lint it
+      # under the cfg that makes it exist.
+      - name: Clippy (loom)
+        env:
+          RUSTFLAGS: --cfg loom
+        run: cargo clippy --manifest-path deep-dive/Cargo.toml --all-targets -- --deny warnings
+      - name: cargo test
+        env:
+          RUST_BACKTRACE: 1
+        run: cargo test --manifest-path deep-dive/Cargo.toml
+      - name: loom model check
+        env:
+          RUSTFLAGS: --cfg loom
+        # A name-filtered `cargo test` exits 0 when the filter matches nothing, so
+        # assert the loom tests really ran — otherwise a cfg/name drift would leave
+        # this step green while model-checking nothing.
+        run: |
+          cargo test --manifest-path deep-dive/Cargo.toml loom_lab > loom.log 2>&1 || { cat loom.log; exit 1; }
+          cat loom.log
+          grep -qE '^test loom_lab::tests::' loom.log || { echo "No loom test ran: loom_lab was compiled away."; exit 1; }
   rumdl:
       runs-on: ubuntu-latest
       steps:
