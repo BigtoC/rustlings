@@ -14,11 +14,9 @@
 // The idiomatic fix does the in-place filter in one safe pass: `Vec::retain`
 // keeps only the elements for which the closure returns `true`.
 
-// TODO: This does not compile: `v.remove(i)` tries to mutate `v` while
-// `v.iter()` still borrows it (E0502). Don't patch the loop — replace the whole
-// body with a single `v.retain(|&x| x % 2 != 0);`, which keeps the odd numbers
-// (drops the evens) in one pass. Until you remove the borrow conflict, this
-// exercise will not compile.
+// TODO: This does not compile: `v.remove(i)` needs `&mut v` while `v.iter()`
+// still borrows it (E0502). Don't patch the indices — replace the whole loop
+// with one safe in-place pass that keeps only the odd numbers.
 fn remove_evens(v: &mut Vec<i32>) {
     for (i, &x) in v.iter().enumerate() {
         if x % 2 == 0 {

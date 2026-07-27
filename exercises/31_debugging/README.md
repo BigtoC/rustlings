@@ -9,7 +9,7 @@ Debugging isn't about lucky guesses — it's about **information**. Rust gives y
 
 - `{:?}` / `{:#?}` — `Debug` formatting. `{:?}` is compact and single-line, while `{:#?}` is the indented, multi-line "pretty" output that's great for printing complex nested structures. Most types get this for free just by adding `#[derive(Debug)]`.
 - `dbg!(x)` — a debugging powerhouse: it dumps `file:line` plus the `{:#?}` representation to **stderr** and **returns `x` unchanged**, so you can drop it inline into an expression as a probe.
-  > Note: `dbg!` is only a temporary probe — don't leave it in finished code (this course's clippy will reject any `dbg!` in a solution).
+  > Note: `dbg!` is only a temporary probe — don't leave it in finished code. Nothing will stop you here, though: `clippy::dbg_macro` is allow-by-default, and while rustlings' own source opts into it (`[workspace.lints.clippy]` in the repo root), the exercise crate you are editing deliberately does not. Stripping your probes is on you. (Add `dbg_macro = "deny"` to `[lints.clippy]` in your own projects if you want the gate.)
 - `assert_eq!(a, b)` — on failure it prints **both values** ("expected 15, got 10"), letting you reason backward about the logic.
 - Reading **compiler errors** and **assertion messages**: the compiler often tells you outright that "`X` doesn't implement `Debug`" or "the return type doesn't match" — read the message first, then act.
 

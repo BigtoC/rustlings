@@ -16,11 +16,9 @@
 
 use std::cell::RefCell;
 
-// TODO: This panics. `current` is a `Ref` guard that keeps the shared borrow
-// alive across the whole `if`, so `cell.borrow_mut()` inside it overlaps and
-// triggers `BorrowMutError`. End the shared borrow before mutating: copy the
-// value out with `let current = *cell.borrow();` (the guard drops at the end of
-// that statement), then compare and `borrow_mut()`.
+// TODO: This compiles but panics with `BorrowMutError`. `current` is a `Ref`
+// guard, so the shared borrow stays alive across the whole `if` and overlaps the
+// `borrow_mut()` inside it. End the shared borrow before mutating.
 fn bump_if_below(cell: &RefCell<i32>, limit: i32) {
     let current = cell.borrow();
     if *current < limit {
