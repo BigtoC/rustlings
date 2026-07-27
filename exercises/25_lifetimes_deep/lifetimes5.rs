@@ -14,10 +14,13 @@
 // same lifetime `'a`; leave `separator` with its own, unrelated lifetime:
 //   fn first_token<'a>(prefix: &'a str, separator: &str) -> &'a str
 fn first_token(prefix: &str, separator: &str) -> &str {
-    match prefix.split(separator).next() {
-        Some(token) => token,
-        None => prefix,
-    }
+    // `split_once` is `None` only when `separator` never occurs — then the whole
+    // of `prefix` is the first token. (Matching on `split(separator).next()` would
+    // have been misleading: its first item is ALWAYS `Some`, so the fallback arm
+    // could never have run.)
+    prefix
+        .split_once(separator)
+        .map_or(prefix, |(token, _)| token)
 }
 
 fn main() {

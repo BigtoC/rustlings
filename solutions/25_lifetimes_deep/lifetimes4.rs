@@ -22,7 +22,9 @@ mod tests {
     #[test]
     fn holds_a_slice_of_the_source() {
         let novel = String::from("Call me Ishmael. Some years ago...");
-        let first_sentence = novel.split('.').next().expect("no '.' in the text");
+        // `split_once` genuinely can fail, so this `expect` means something —
+        // `split('.').next()` is always `Some`, which would make it theatre.
+        let (first_sentence, _) = novel.split_once('.').expect("no '.' in the text");
         let excerpt = Excerpt {
             part: first_sentence,
         };
