@@ -12,7 +12,7 @@
 >   `-D warnings` + rustfmt").
 > - The parts that **require `unsafe`** (raw-pointer linked list, hand-written
 >   `RawWaker`, self-referential structs) live in a separate
->   [``](deep-dive/) crate, as a "read + tinker + run tests" lab.
+>   `deep-dive/` crate, as a "read + tinker + run tests" lab.
 > - Everything is in **English**: code comments, hints (the `h` key), and READMEs.
 
 ## How to run it
@@ -43,14 +43,22 @@ elsewhere" experience:
 
 ```bash
 cargo install --path . --locked   # install this fork (replaces global rustlings; exercises are embedded)
-cd ~/somewhere && rustlings init  # generate a workspace containing this course in an empty dir
+cd ~/somewhere && rustlings init  # generate a workspace with the graded exercises in an empty dir
 cd rustlings && rustlings         # start
 ```
 
+> ⚠️ What the binary embeds is the **graded exercises** and their module `README.md`s
+> (plus the workspace scaffolding), so the `deep-dive/` labs and this `COURSE.md` are
+> **not** part of the workspace `rustlings init` generates. (The `solutions/` files it writes start out
+> as placeholders and are filled in as you finish each exercise.) Keep a clone of
+> this repo around and run the labs from there:
+> `cargo test --manifest-path deep-dive/Cargo.toml`.
+>
 > Restore the official version with `cargo install rustlings`.
 >
 > Maintainer check of the whole course: `cargo dev check` (compiles and tests every
-> exercise and solution).
+> exercise and solution) plus `cargo test --manifest-path deep-dive/Cargo.toml` for the
+> labs.
 
 ## Course map
 
@@ -73,7 +81,7 @@ cd rustlings && rustlings         # start
 | `33_closures`     | `closure1..4`  | Capture modes & `move`; the `Fn` / `FnMut` / `FnOnce` hierarchy; returning `impl Fn` vs `Box<dyn Fn>`                |
 | `34_iterators`    | `iter1..4`     | Implementing `Iterator` (just `next`); a custom lazy adapter; adapter **laziness**; `IntoIterator` for `for` loops   |
 | `35_error_design` | `err1..3`      | `?` as `From::from`; custom error enums; `Display` + `Error::source()` chains; `From` vs `TryFrom`                   |
-| ``                | `vtable_lab`   | The `&dyn Trait` fat pointer built by hand — a data pointer + a static table of function pointers                    |
+| `deep-dive/`      | `vtable_lab`   | The `&dyn Trait` fat pointer built by hand — a data pointer + a static table of function pointers                    |
 
 ### Module 2 · Data structures: reading and hand-writing
 
@@ -82,8 +90,8 @@ cd rustlings && rustlings         # start
 | `27_data_structures` | `linkedlist1` | A **safe** singly linked list with `Option<Box<Node>>` (`Option::take` is key)                           |
 | `27_data_structures` | `ringbuffer1` | A `Vec`-backed ring buffer: `head`/`len` + modular wraparound — the core of `VecDeque`                   |
 | `27_data_structures` | `hashtable1`  | A separate-chaining hash map: `DefaultHasher` to pick a bucket + collision handling                      |
-| ``                   | `unsafe_list` | A **doubly** linked list with `NonNull` **raw pointers**, just like the standard library's `LinkedList`  |
-| ``                   | `raw_vec`     | `Vec` from scratch: `Layout`/`alloc`/`realloc` growth, `ptr::write`/`read`, and a `Drop` that frees once |
+| `deep-dive/`         | `unsafe_list` | A **doubly** linked list with `NonNull` **raw pointers**, just like the standard library's `LinkedList`  |
+| `deep-dive/`         | `raw_vec`     | `Vec` from scratch: `Layout`/`alloc`/`realloc` growth, `ptr::write`/`read`, and a `Drop` that frees once |
 
 ### Module 3 · Async model, fully dissected — hand-written async runtime (the focus)
 
@@ -96,8 +104,8 @@ cd rustlings && rustlings         # start
 | `29_async_runtime` | `runtime2`         | The executor core: the `block_on` poll loop (park/unpark)                                                             |
 | `29_async_runtime` | `runtime3`         | **Multi-task executor**: a ready-queue + a self-rescheduling `Waker` (the skeleton of tokio's current-thread runtime) |
 | `29_async_runtime` | `runtime4`         | Why `Pin` exists, and how to safely satisfy `poll`'s `Pin<&mut Self>`                                                 |
-| ``                 | `raw_waker`        | Hand-written `RawWaker` + `RawWakerVTable` (four function pointers) — the real `Waker`                                |
-| ``                 | `self_referential` | Self-referential struct + `Pin`/`PhantomPinned` — what `Pin` is really protecting                                     |
+| `deep-dive/`       | `raw_waker`        | Hand-written `RawWaker` + `RawWakerVTable` (four function pointers) — the real `Waker`                                |
+| `deep-dive/`       | `self_referential` | Self-referential struct + `Pin`/`PhantomPinned` — what `Pin` is really protecting                                     |
 
 **The async trinity**: `Future` defines the computation · `Waker` handles notification · `Pin` guarantees safety.
 
@@ -111,10 +119,10 @@ cd rustlings && rustlings         # start
 | `36_atomics`   | `atomics1`   | Lock-free `AtomicUsize` counter with `fetch_add(Relaxed)`                             |
 | `36_atomics`   | `atomics2`   | `Release`/`Acquire` publish-subscribe: the happens-before edge that publishes data    |
 | `36_atomics`   | `atomics3`   | A CAS-based spinlock (`compare_exchange` + `spin_loop`)                               |
-| ``             | `myarc`      | `Arc` from scratch: `Relaxed` clone, `Release` drop + `Acquire` fence before free     |
-| ``             | `loom_lab`   | Model-check the `atomics2` handoff under `loom` (`--cfg loom`) — why `Relaxed` breaks |
+| `deep-dive/`   | `myarc`      | `Arc` from scratch: `Relaxed` clone, `Release` drop + `Acquire` fence before free     |
+| `deep-dive/`   | `loom_lab`   | Model-check the `atomics2` handoff under `loom` (`--cfg loom`) — why `Relaxed` breaks |
 
-> The `unsafe` use cases live in the [``](deep-dive/) labs, each with `// SAFETY:` comments.
+> The `unsafe` use cases live in the `deep-dive/` labs, each with `// SAFETY:` comments.
 > "Read the serde/tokio source" and "the rustc frontend: AST/HIR/MIR" are further reading — see the links in each README.
 
 ### Module 5 · Interview & debugging practice
@@ -135,5 +143,5 @@ the "further reading" links in that module's README to revisit the design ideas.
 
 - `exercises/NN_*/` — the exercises you fix (one `.rs` per exercise) + that module's `../README.md`
 - `solutions/NN_*/` — the corresponding reference solutions
-- `` — a separate crate holding the labs that require `unsafe` (not subject to the exercises' `unsafe_code = "forbid"`)
+- `deep-dive/` — a separate crate holding the labs that require `unsafe` (not subject to the exercises' `unsafe_code = "forbid"`)
 - `../rustlings-macros/info.toml` — the exercise list and hints

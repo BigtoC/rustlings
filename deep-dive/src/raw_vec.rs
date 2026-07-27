@@ -14,10 +14,11 @@
 //! - **`push` / `pop`** *move* elements in and out with `ptr::write` /
 //!   `ptr::read`. These do a raw memory copy — no `Clone`, and crucially no
 //!   `Drop` of whatever bytes happened to be sitting in the slot before.
-//! - **`Drop`** must first drop only the *initialized* region `[0, len)` (the
-//!   slots past `len` hold uninitialized memory — dropping them is undefined
-//!   behavior), then hand the block back with `alloc::dealloc` using a `Layout`
-//!   that matches the one we allocated with.
+//! - **`Drop`** must first drop only the *initialized* region `[0, len)` — one
+//!   `ptr::drop_in_place` over the `&mut [T]` slice does it (the slots past `len`
+//!   hold uninitialized memory, and dropping them is undefined behavior) — then
+//!   hand the block back with `alloc::dealloc` using a `Layout` that matches the
+//!   one we allocated with.
 //! - **`Deref`/`DerefMut`** hand out a `&[T]` / `&mut [T]` covering exactly the
 //!   initialized region, which is how `Vec` gets every slice method for free.
 //!
@@ -147,15 +148,20 @@ impl<T> Default for MyVec<T> {
 impl<T> Drop for MyVec<T> {
     fn drop(&mut self) {
         if self.cap != 0 {
-            // Drop only the initialized region: popping every element runs each
-            // element's own `Drop` exactly once. Slots in `[len, cap)` are
-            // uninitialized and must NOT be dropped.
-            while self.pop().is_some() {}
+            // Drop only the initialized region, in ONE call — exactly what the
+            // real `Vec` does. `&mut **self` is the `&mut [T]` covering `[0, len)`
+            // (see `DerefMut`), so the slots in `[len, cap)` are never touched;
+            // dropping those would be undefined behavior.
+            // SAFETY: every element of that slice is initialized (our invariant)
+            // and `drop_in_place` runs each element's own `Drop` exactly once.
+            unsafe {
+                ptr::drop_in_place(&mut **self as *mut [T]);
+            }
             // Then hand the block back with a layout matching the allocation.
             let layout = Layout::array::<T>(self.cap).unwrap();
             // SAFETY: `ptr` was allocated by this allocator with exactly `layout`
-            // (cap unchanged since the last grow), every element has been moved out
-            // and dropped above, and we deallocate exactly once (cap != 0 here).
+            // (cap unchanged since the last grow), every element has already been
+            // dropped above, and we deallocate exactly once (cap != 0 here).
             unsafe {
                 alloc::dealloc(self.ptr.as_ptr() as *mut u8, layout);
             }

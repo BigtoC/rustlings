@@ -25,8 +25,7 @@ struct ThreadState {
 }
 
 /// The single global vtable, shared by every `RawWaker` this module creates.
-static VTABLE: RawWakerVTable =
-    RawWakerVTable::new(clone_raw, wake_raw, wake_by_ref_raw, drop_raw);
+static VTABLE: RawWakerVTable = RawWakerVTable::new(clone_raw, wake_raw, wake_by_ref_raw, drop_raw);
 
 /// Pack an `Arc<ThreadState>` into a `RawWaker` (consuming one reference count).
 fn raw_waker(state: Arc<ThreadState>) -> RawWaker {

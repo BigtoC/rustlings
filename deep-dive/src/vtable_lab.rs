@@ -24,14 +24,28 @@
 use std::f64::consts::PI;
 use std::marker::PhantomData;
 
-/// Two concrete "shape" types. They share no trait and no common field — the
-/// only thing tying them together at runtime will be the vtable we hand them.
+/// One of the two concrete "shape" types. `Circle` and `Square` share no trait and
+/// no common field — the only thing tying them together at runtime is the vtable we
+/// hand each of them.
 pub struct Circle {
     radius: f64,
 }
 
+impl Circle {
+    pub fn new(radius: f64) -> Self {
+        Circle { radius }
+    }
+}
+
+/// The other concrete "shape" type; see [`Circle`].
 pub struct Square {
     side: f64,
+}
+
+impl Square {
+    pub fn new(side: f64) -> Self {
+        Square { side }
+    }
 }
 
 /// One vtable = one row of function pointers per concrete type, plus a bit of
@@ -135,8 +149,8 @@ mod tests {
 
     #[test]
     fn dispatch_goes_through_the_vtable() {
-        let circle = Circle { radius: 2.0 };
-        let square = Square { side: 3.0 };
+        let circle = Circle::new(2.0);
+        let square = Square::new(3.0);
 
         // A heterogeneous collection: two different concrete types behind one
         // erased `DynShape` type — only possible because each carries its own
@@ -155,8 +169,8 @@ mod tests {
 
     #[test]
     fn same_type_shares_one_static_vtable() {
-        let a = Circle { radius: 1.0 };
-        let b = Circle { radius: 5.0 };
+        let a = Circle::new(1.0);
+        let b = Circle::new(5.0);
         let da = erase_circle(&a);
         let db = erase_circle(&b);
 

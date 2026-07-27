@@ -21,8 +21,8 @@
 
 #[cfg(test)]
 mod tests {
-    use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use loom::sync::Arc;
+    use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use loom::thread;
 
     /// The CORRECT handoff. The producer publishes the payload with a `Relaxed`
