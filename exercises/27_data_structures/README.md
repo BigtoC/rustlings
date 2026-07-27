@@ -23,7 +23,9 @@ pointers:
 1. **linkedlist1** — Implement a **singly-linked-list stack** using
    `Option<Box<Node>>`. Implement `push` and `pop`, using `Option::take` to crack
    the classic ownership puzzle of "you can't move a value out of a borrow." The
-   tests verify LIFO (last-in, first-out) order.
+   tests verify LIFO (last-in, first-out) order, plus that a 200 000-node stack
+   can be dropped at all — the derived drop glue is recursive, so the exercise
+   ships a hand-written iterative `Drop` to stop it overflowing the stack.
 2. **ringbuffer1** — Implement a fixed-length **ring buffer** (the kernel of
    `VecDeque`) on top of a `Vec<Option<i32>>`. Implement `push_back` /
    `pop_front`, handling index wrap-around with `% capacity`. The tests verify

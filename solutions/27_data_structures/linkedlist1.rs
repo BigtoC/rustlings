@@ -10,6 +10,12 @@
 // borrow). `Option::take` swaps the field with `None` and hands you the old
 // value — the canonical safe way to "steal" an owned value out of a borrow.
 //
+// One catch that bites in production: the drop glue the compiler derives for
+// `Option<Box<Node>>` is RECURSIVE. Dropping the head drops its `next`, which
+// drops its `next`, ... — one stack frame per node, so a long list overflows the
+// stack instead of being freed. The fix is a hand-written `Drop` that unlinks the
+// nodes in a loop, which is what `Stack` does below.
+//
 // (The raw-pointer, `unsafe` doubly-linked version lives in `deep-dive/`.)
 
 struct Node {
@@ -45,6 +51,20 @@ impl Stack {
 impl Default for Stack {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for Stack {
+    fn drop(&mut self) {
+        // Unlink node by node instead of letting the derived, RECURSIVE drop glue
+        // walk the chain: a long list would otherwise need one stack frame per node
+        // and overflow. Every node has its `next` taken out before it is dropped,
+        // so nothing recurses. Note this does not go through `pop` — teardown must
+        // not depend on it.
+        let mut cur = self.head.take();
+        while let Some(mut node) = cur {
+            cur = node.next.take();
+        }
     }
 }
 
@@ -86,5 +106,16 @@ mod tests {
         assert_eq!(stack.pop(), Some(40));
         assert_eq!(stack.pop(), Some(20));
         assert_eq!(stack.pop(), None);
+    }
+
+    #[test]
+    fn dropping_a_long_stack_does_not_overflow_the_stack() {
+        let mut stack = Stack::new();
+        for i in 0..200_000 {
+            stack.push(i);
+        }
+        // `stack` is dropped here. With the compiler's recursive drop glue this
+        // would need 200_000 stack frames and abort; the iterative `Drop` above
+        // needs none. Reaching the end of this test IS the assertion.
     }
 }
