@@ -1292,6 +1292,235 @@ then uses `rest`, giving "does not live long enough". The value actually returne
 is the underlying `text` (lifetime `'a`), so annotate the method's return type
 explicitly to override the too-short default: `fn remainder(&self) -> &'a str { self.text }`."""
 
+# MODULE 1 · BORROW-CHECKER ERRORS — read the error, then fix the design
+# (E0499 / E0502 / E0515 / E0716 / E0382; interview drills, std + safe)
+
+[[exercises]]
+name = "borrowck1"
+dir = "37_borrowck_errors"
+hint = """
+Part A — `swap_titles`: E0499 "cannot borrow `tickets[_]` as mutable more than
+once at a time". The borrow checker tracks PLACES, not index values: it never
+evaluates `i` or `j`, so `&mut tickets[i]` and `&mut tickets[j]` are both the
+place `tickets[_]`, and `a` is still used on the `swap` line when `b` is made.
+It is right to refuse, because `i == j` really can happen. Ask the slice for two
+references it has CHECKED are disjoint, and map its errors onto yours:
+```
+use std::slice::GetDisjointMutError;
+
+let [a, b] = tickets.get_disjoint_mut([i, j]).map_err(|e| match e {
+    GetDisjointMutError::OverlappingIndices => SwapError::SameIndex,
+    GetDisjointMutError::IndexOutOfBounds => SwapError::OutOfBounds,
+})?;
+mem::swap(&mut a.title, &mut b.title);
+Ok(())
+```
+Alternative (the tool rustc's own help line suggests): do the `i == j` and bounds
+checks yourself, then `split_at_mut` at the larger index so the two tickets land
+in different halves:
+```
+if i == j {
+    return Err(SwapError::SameIndex);
+}
+let (lo, hi) = (i.min(j), i.max(j));
+if hi >= tickets.len() {
+    return Err(SwapError::OutOfBounds);
+}
+let (left, right) = tickets.split_at_mut(hi);
+mem::swap(&mut left[lo].title, &mut right[0].title);
+Ok(())
+```
+The tests catch the usual shortcuts. `tickets.swap(i, j)` moves the ids too.
+`.unwrap()` panics on bad input. `.clone()` / `to_string()` copy the titles
+instead of moving them (the tests compare heap pointers).
+
+Part B — `commit`: E0499 "cannot borrow `*ed` as mutable more than once at a
+time". The borrow checker only reads signatures, and `fn buffer_mut(&mut self)`
+says "the result borrows ALL of `*self`". So while `buffer` is alive, calling
+`history_mut()` borrows the whole editor a second time. Borrow the two FIELDS
+instead. They are disjoint places, so both `&mut` can be live at once (a "split
+borrow"):
+```
+let Editor { buffer, history } = ed;
+history.push(mem::take(buffer));
+```
+(`let buffer = &mut ed.buffer; let history = &mut ed.history;` does the same
+thing.) If the fields were private to another module, write ONE method that
+borrows `self` once and hands out the pieces, then call it with
+`let (buffer, history) = ed.parts_mut();`:
+```
+fn parts_mut(&mut self) -> (&mut String, &mut Vec<String>) {
+    (&mut self.buffer, &mut self.history)
+}
+```
+Doing the accessor calls one after the other also compiles:
+`let text = mem::take(ed.buffer_mut()); ed.history_mut().push(text);`. Each
+borrow ends before the next one starts, but this avoids the interview question
+instead of answering it. Why not `RefCell`? It moves the same check to run time,
+where `i == j` becomes a "RefCell already borrowed" panic (see
+`31_debugging/debugging4`), and it changes the type for every user."""
+
+[[exercises]]
+name = "borrowck2"
+dir = "37_borrowck_errors"
+hint = """
+Three functions, three versions of "the owner is already gone".
+
+`header_columns`, E0716 "temporary value dropped while borrowed": the `String` from
+`line.to_lowercase()` is an unnamed temporary. It is freed at the `;` of the
+`let names` statement, but `names` (a `Vec<&str>` pointing into it) is read on the
+next line. A method receiver is not a temporary-lifetime-extension position, so
+nothing keeps it alive. Give it a name so it lives to the end of the function:
+```
+let lower = line.to_lowercase();
+let names: Vec<&str> = lower.split(',').map(str::trim).collect();
+names.iter().map(|s| s.to_string()).collect()
+```
+Or build the owned names in ONE statement, while the temporary is still alive:
+`line.to_lowercase().split(',').map(|s| s.trim().to_string()).collect()`.
+
+`shout_longest`, E0515 "cannot return reference to local variable `shouted`":
+`shouted` is dropped when the function returns. `-> &'a str` promises a borrow of
+`a` or `b`, and the shouted text is neither (uppercasing does not even map one char
+to one char: "ß" becomes "SS"). No lifetime annotation fixes that: the caller has
+to own the new text. Return the `String` and drop the now-needless lifetimes:
+```
+fn shout_longest(a: &str, b: &str) -> String {
+    let longest = if a.len() >= b.len() { a } else { b };
+    format!("{}!", longest.to_uppercase())
+}
+```
+`Box::leak` / `String::leak` would compile, but they leak memory on every call, and
+a test rejects them. If the caller wants to reuse an allocation, the other good
+answer is to write into a caller-provided buffer (`out: &mut String`).
+
+`first_word`, E0515 "cannot return value referencing local variable `trimmed`":
+the slice from `split` points into `trimmed`, a local `String` copy that dies on
+return. Here the `&str` signature is RIGHT, so stop copying and slice the input
+itself. `trim` and `split` on a `&str` return sub-slices of that same `&str`:
+```
+fn first_word(s: &str) -> &str {
+    s.trim().split(' ').next().unwrap_or("")
+}
+```
+`s.split_whitespace().next().unwrap_or("")` works too, and there the
+`unwrap_or("")` matters: `split_whitespace` yields nothing for empty or all-space
+input. (`split` always yields at least one piece, so after it the fallback never
+fires.) With a single input reference, elision writes the `'a` for you; keep the
+`<'a>` and clippy's `needless_lifetimes` will point that out. A test checks that
+the result points INTO the input, so copies and leaks fail. For "usually return the
+input unchanged, sometimes build new text", the tool is `Cow<'a, str>` (covered
+later). See also `16_lifetimes/lifetimes1` and `25_lifetimes_deep/lifetimes5`."""
+
+[[exercises]]
+name = "borrowck3"
+dir = "37_borrowck_errors"
+hint = """
+Both functions fail with E0499 "cannot borrow `*map` (or `*items`) as mutable more
+than once at a time", with the note "returning this value requires that `*map` is
+borrowed for `'1`" (or `*items` for `'a`). The first borrow MIGHT be returned, so it
+must last for the caller's whole lifetime. NLL's outlives constraints are
+location-insensitive: a requirement that arises on one path holds on every path. So
+the borrow still counts as live on the miss path, where `insert`/`push` take a
+second `&mut`. This is a known false positive: it is "problem case #3" in the NLL
+RFC (RFC 2094). The RFC's design aimed to accept it, but the NLL that shipped does
+not. Polonius, the next-generation borrow checker, accepts this code unchanged, but
+it is nightly-only. On stable, restructure so no borrow crosses the conditional
+return.
+
+Part A: use the entry API. It takes ONE mutable borrow, hashes and looks up `key`
+once, and returns a reference into the map for either outcome:
+```
+map.entry(key).or_default()
+```
+`or_insert_with(String::new)` compiles too, but clippy's `unwrap_or_default` lint
+asks for `or_default()` instead. A `contains_key` check followed by `get_mut` also
+compiles, but it looks the key up twice on a hit and three times on a miss (and
+clippy's `map_entry` lint flags the `contains_key` + `insert` pair). Copying the
+stored value (`.cloned()`, then `insert`) compiles as well, but the tests compare
+heap pointers, so it fails them. Interview detail: `entry` takes the key BY VALUE,
+so with `String` keys you would build the owned key even on a hit.
+
+Part B: `Vec` has no entry API, so search for the INDEX. `position` borrows `items`
+only while it searches and returns a plain `usize` (not a borrow), so nothing
+borrowed reaches the `push`:
+```
+let index = match items.iter().position(|i| i.name == name) {
+    Some(index) => index,
+    None => {
+        items.push(Item {
+            name: name.to_string(),
+            count: 0,
+        });
+        items.len() - 1
+    }
+};
+&mut items[index]
+```
+An early `return &mut items[index];` followed by `push` and
+`items.last_mut().unwrap()` works too. Do not reach for `.clone()`, `Box::leak`,
+`unsafe`, or removing and re-pushing items. The tests check that writes through
+the returned reference land in the collection, that a hit returns the stored value
+itself (not a copy), that nothing is duplicated and that insertion order is kept.
+For NLL ending a borrow at its last use (why a borrow that is only used locally
+would be fine), see `24_ownership_model/ownership3`."""
+
+[[exercises]]
+name = "borrowck4"
+dir = "37_borrowck_errors"
+hint = """
+Part A: E0502 "cannot borrow `*log` as immutable because it is also borrowed as
+mutable". By elision, `fn push(&mut self, entry: String) -> &str` means
+`fn push<'a>(&'a mut self, entry: String) -> &'a str`. The returned `&str` keeps the
+EXCLUSIVE borrow of the whole `Log` alive for as long as `stored` is used, even
+though the `&str` is read-only. Rust never "downgrades" that borrow to a shared one,
+and Polonius rejects this code too. A downgrade would be unsound: with
+`fn peek(c: &mut Cell<i32>) -> &i32 { c.get_mut() }`, `c.set(..)` could change the
+value under your `&i32`. So `log.len()` conflicts with `stored`. Fix it in the API:
+make the mutating method return no borrow, then read back through the `&self`
+accessors. Their shared borrows can coexist:
+```
+fn push(&mut self, entry: String) {
+    self.entries.push(entry);
+}
+```
+```
+log.push(entry.to_string());
+let stored = log.last().expect("`push` just stored an entry");
+format!("#{}: {stored}", log.len())
+```
+Another API-level fix: have `push` return a `Copy` handle (the new length or the
+index) instead of a reference. Keeping `push` as it is and just not holding its
+result also compiles, but it leaves the trap in the API for the next caller.
+Copying the text out (`.to_owned()`) compiles too. But it pays for an allocation to
+get around a design problem, and interviewers push back on that answer.
+
+Part B: E0382 "use of moved value: `buf`". `&mut String` is not `Copy` (two copies
+would be two live exclusive references), so passing `buf` by value moves it. With
+`fn f(x: &mut String)` the compiler quietly rewrites `f(buf)` as `f(&mut *buf)`, an
+implicit reborrow. That coercion only happens when the parameter type is already
+known to be `&mut _`. `append_all`'s parameter is a bare generic `W`, so `buf`
+itself gets moved into the first call. Reborrow explicitly, as rustc's `help:` line
+suggests:
+```
+append_all(&mut *buf, &["a", "b"])?;
+append_all(buf, &["c"])
+```
+`&mut *buf` is a new, shorter-lived `&mut String`, and `buf` is only frozen while that
+call runs. The last call may move `buf` because nothing uses it afterwards. Writing
+`&mut *buf` in both calls is fine too.
+
+Alternatives that show the rule at work: name the type so the expected type is
+known (`append_all::<&mut String>(buf, ..)`, or `let first: &mut String = buf;`).
+You can also declare `mut buf` and pass `&mut buf`, which works through
+`impl Write for &mut W` but adds a level of indirection. Don't change `append_all`
+to take `&mut W`. Taking writers by value (Rust API Guidelines C-RW-VALUE) is what
+lets a test pass an adapter like `Shout(&mut buf)`. `Iterator::by_ref()` and
+`io::Write::by_ref()` spell that borrow as a method call, so you can hand your
+iterator or writer to a by-value API and keep using it. `fmt::Write` has no
+`by_ref`. See also `24_ownership_model/ownership3` (shared XOR exclusive) and
+`25_lifetimes_deep/lifetimes6` (the `&self` elision rule)."""
+
 # MODULE 1 · SMART POINTERS — Box / Rc·Weak / RefCell
 
 [[exercises]]
