@@ -9,11 +9,12 @@ Visit the **website** for a demo, info about setup and more:
 ## Deep-dive track (this fork)
 
 This fork adds an advanced track for people who already _use_ Rust and want to
-understand _why_ it works: modules `24_ownership_model` through `36_atomics` in
-`exercises/`, plus a separate [`deep-dive/`](deep-dive/) crate holding the labs
-that require `unsafe`.
+understand _why_ it works: modules `24_ownership_model` through
+`37_borrowck_errors` in `exercises/`, plus a separate [`deep-dive/`](deep-dive/)
+crate holding the labs that require `unsafe`.
 
 Start with the course map: **[deep-dive/COURSE.md](deep-dive/COURSE.md)**.
+What's planned next: **[deep-dive/ROADMAP.md](deep-dive/ROADMAP.md)**.
 
 ```bash
 cargo run                                          # work through the exercises

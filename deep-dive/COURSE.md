@@ -10,7 +10,7 @@
 >   so they can be validated automatically by `rustlings dev check` (each exercise
 >   "fails while unsolved (compile/test error)"; each solution "passes + clippy
 >   `-D warnings` + rustfmt").
-> - The parts that **require `unsafe`** (raw-pointer linked list, hand-written
+> - The parts that **require `unsafe`** (raw-pointer linked list, handwritten
 >   `RawWaker`, self-referential structs) live in a separate
 >   `deep-dive/` crate, as a "read + tinker + run tests" lab.
 > - Everything is in **English**: code comments, hints (the `h` key), and READMEs.
@@ -64,11 +64,12 @@ cd rustlings && rustlings         # start
 
 ### Module 1 · Ownership / Lifetimes / Memory model
 
-| Directory                | Exercises       | Focus                                                                                                                     |
-| ------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `24_ownership_model`     | `ownership1..3` | Move vs Copy vs Clone; shared `&T` vs exclusive `&mut T`; the borrow checker and NLL                                      |
-| `25_lifetimes_deep`      | `lifetimes4..6` | Lifetime parameters, structs holding references, lifetimes in `impl`, elision, `'static`                                  |
-| `26_smart_pointers_deep` | `smartptr1..3`  | `Box<T>` heap allocation & recursive types; `Rc`/`Weak` shared ownership & breaking cycles; `RefCell` interior mutability |
+| Directory                | Exercises       | Focus                                                                                                                                                                                                                                 |
+| ------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `24_ownership_model`     | `ownership1..3` | Move vs Copy vs Clone; shared `&T` vs exclusive `&mut T`; the borrow checker and NLL                                                                                                                                                  |
+| `25_lifetimes_deep`      | `lifetimes4..6` | Lifetime parameters, structs holding references, lifetimes in `impl`, elision, `'static`                                                                                                                                              |
+| `37_borrowck_errors`     | `borrowck1..4`  | Interview drill, read the error then fix the design: two `&mut` into one slice & split borrows (E0499); temporaries & returned locals (E0716 / E0515); NLL problem case #3 (E0499); no `&mut` downgrade & reborrowing (E0502 / E0382) |
+| `26_smart_pointers_deep` | `smartptr1..3`  | `Box<T>` heap allocation & recursive types; `Rc`/`Weak` shared ownership & breaking cycles; `RefCell` interior mutability                                                                                                             |
 
 ### Traits & Abstraction · the trait-system prerequisites (before async & concurrency)
 
@@ -138,6 +139,11 @@ cd rustlings && rustlings         # start
 High-frequency interview topics (ownership, borrowing, lifetimes, `Send`/`Sync`, the
 async model) are spread across the exercises above; after finishing each module, use
 the "further reading" links in that module's README to revisit the design ideas.
+
+## Roadmap
+
+What comes next for interview prep, prioritized and with compile-checked exercise
+specs: **[ROADMAP.md](ROADMAP.md)**.
 
 ## Directory conventions
 
