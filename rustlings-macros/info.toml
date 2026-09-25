@@ -1254,6 +1254,127 @@ index 0 is an `i32` (a `Copy` type), copy the value out to end the borrow:
 `let first = data[0];` (drop the `&`), then `data.push(first + 10);`. Now no borrow
 of `data` is live during the push."""
 
+[[exercises]]
+name = "ownership4"
+dir = "24_ownership_model"
+hint = """
+Part A, `flush`: E0507 "cannot move out of `self.buf` which is behind a mutable
+reference". `&mut self` gives you exclusive access, not ownership. The owner of the
+`Batch` will use `buf` again (and drop it), so `buf` can never be left empty.
+Move the `Vec` out and put an empty one back in the same step:
+```
+fn flush(&mut self) -> Vec<Event> {
+    self.flushed += self.buf.len();
+    std::mem::take(&mut self.buf)
+}
+```
+`mem::take` leaves `Vec::default()` (that is `Vec::new()`, which does not allocate)
+and returns the old `Vec` itself. So the caller gets the same heap buffer (the
+pointer test checks this) and nothing is copied. If the batch should start again
+with a preallocated buffer, `mem::replace(&mut self.buf, Vec::with_capacity(n))`
+does the same job with a placeholder you choose. These shortcuts fail: deriving
+`Clone` for `Event` and cloning (copies every event),
+`self.buf.drain(..).collect()` or `self.buf.split_off(0)` (move the events into a
+NEW allocation), `mem::take(self)` with a derived `Default` on `Batch` (it also
+resets `flushed`), and `fn flush(self)` (consumes the batch, but the tests flush
+it again).
+
+Part B, `present`: two E0507s. `let old_front = self.front;` moves a field out
+and puts nothing back, and so does `self.front = self.back;`. Swap the two values
+in one operation:
+```
+fn present(&mut self) {
+    std::mem::swap(&mut self.front, &mut self.back);
+    self.back.clear();
+}
+```
+Only the three-word `Vec` headers move, so the heap buffers trade places and a
+running double buffer never allocates. `self.front = mem::take(&mut self.back);`
+compiles but throws the old front's allocation away, so the next frame has to
+allocate again. `append` and `extend` move the events into the other buffer's
+allocation instead of letting the two allocations trade places. The pointer tests
+reject all of these. `mem::swap` needs two `&mut` to different places, which is
+fine here: `self.front` and `self.back` are disjoint fields (a split borrow, see
+`37_borrowck_errors/borrowck1`). `Option::take()`, used in
+`27_data_structures/linkedlist1`, is the same idea for an `Option`."""
+
+[[exercises]]
+name = "ownership5"
+dir = "24_ownership_model"
+hint = """
+`on_connected`: E0507 "cannot move out of `self.addr` as enum variant `Connecting`
+which is behind a mutable reference". The pattern moves `addr` out of `*self`,
+which you only borrow. Then `*self = ...` would drop the old value, which still
+contains that `String`: a double free. Take the whole old state out by value,
+leave a placeholder behind, and write a real state back in every arm:
+```
+match std::mem::replace(self, Conn::Closed) {
+    Conn::Connecting { addr } => {
+        *self = Conn::Connected { addr, session };
+        Ok(())
+    }
+    other => {
+        // Not our event: put the old state back.
+        *self = other;
+        Err(session)
+    }
+}
+```
+If you forget the write-back in the `other` arm, an `Idle` or a live `Connected`
+connection turns into `Closed`, and the tests check for that. Two alternatives
+also work. You can add `#[derive(Default)]` to `Conn`, with `#[default]` on `Idle`,
+and use `mem::take(self)`. Or, because only a `String` moves, write
+`if let Conn::Connecting { addr } = self` (so `addr` is a `&mut String`), then
+`let addr = std::mem::take(addr);` before the assignment. `addr.clone()` compiles
+too, but the pointer test rejects it.
+
+`close`: E0507 "cannot move out of `self.session` as enum variant `Connected`
+which is behind a mutable reference". Here the placeholder IS the next state, so
+the whole transition is one `mem::replace`:
+```
+match std::mem::replace(self, Conn::Closed) {
+    Conn::Connected { session, .. } => Some(session),
+    Conn::Idle | Conn::Connecting { .. } | Conn::Closed => None,
+}
+```
+`Session` has no `Default`, so you can't `mem::take` just that field. Swapping a
+made-up session into it (`mem::replace(session, Session::new(0, ""))`) compiles,
+but the stand-in is dropped along with the old state, and the drop-counting test
+catches that. If a panic happened between `mem::replace` and the write-back, the
+`Conn` would be left `Closed`. That is valid, just not what you wanted, which is
+why the placeholder should be a state that means something. Crates like
+`take_mut` and `replace_with` let a closure consume `*self`, but they abort on
+panic or ask you for a fallback value."""
+
+[[exercises]]
+name = "ownership6"
+dir = "24_ownership_model"
+hint = """
+E0509 "cannot move out of type `Connection<'_>`, which implements the `Drop`
+trait". You own `self`, so a partial move would normally be fine (see `Frame`).
+But `Drop::drop(&mut self)` still runs when `into_pending` returns, and it needs
+the whole value. Leave a valid value in the field instead of a hole. That needs
+a mutable binding for `self`:
+```
+fn into_pending(mut self) -> Vec<u8> {
+    std::mem::take(&mut self.pending)
+}
+```
+`mut self` does not change the API. The `mut` belongs to the local binding inside
+the function: callers still write `conn.into_pending()` and lose `conn`, and a
+trait method declared as `fn f(self)` can be implemented as `fn f(mut self)`.
+`drop` then runs once, at the end of the method, on the leftover connection, and
+logs "closed with 0 pending bytes". That is correct, because the caller owns the
+bytes now. These fail: `self.pending.clone()` (rustc's suggestion; it copies the
+bytes, and the close log still reports them as pending), removing the `Drop` impl
+(no close log), `mem::forget` or `ManuallyDrop` (they skip `drop`, so no log, and
+the other fields leak; clippy also denies `mem::forget` in this course),
+`drain(..).collect()` (a new allocation), and `&mut self` (the connection is not
+consumed, so the tests no longer compile). If a field has no cheap `Default`,
+store it as `Option<T>`, `take()` it, and make `drop` handle `None`. std's
+`io::BufWriter::into_parts` uses `ManuallyDrop` plus `unsafe { ptr::read(..) }`
+instead, and this course forbids `unsafe`."""
+
 # MODULE 1 · LIFETIMES — lifetime parameters, elision, explicit annotations
 
 [[exercises]]
@@ -1291,6 +1412,107 @@ result can't outlive the `Parser`; the test drops `parser` in an inner block and
 then uses `rest`, giving "does not live long enough". The value actually returned
 is the underlying `text` (lifetime `'a`), so annotate the method's return type
 explicitly to override the too-short default: `fn remainder(&self) -> &'a str { self.text }`."""
+
+[[exercises]]
+name = "lifetimes7"
+dir = "25_lifetimes_deep"
+hint = """
+E0308 "mismatched types ... expected `&str`, found `String`" (then `Arc<str>`,
+`Counted` and `Traced`): a `&'static str` parameter only accepts text that is
+never freed (literals, `static`s, leaked strings). What `thread::spawn` really
+needs is a value the new thread can OWN and keep for as long as it likes. That
+is the `T: 'static` BOUND, not a `&'static` reference. Make the function
+generic, then add the bounds rustc asks for one at a time (E0277 "`T` cannot be
+sent between threads safely", then E0310 "the parameter type `T` may not live
+long enough"):
+```
+use std::fmt::Display;
+
+fn spawn_logger<T: Display + Send + 'static>(msg: T) -> JoinHandle<String> {
+    thread::spawn(move || format!("[log] {msg}"))
+}
+```
+`msg: impl Display + Send + 'static` is the same bound, and
+`T: ToString + Send + 'static` with `msg.to_string()` inside the closure works
+too. Don't add `Sync`: the message is moved to the logger thread, never shared,
+and the `Counted` test (its `Cell` makes it `Send` but not `Sync`) would fail
+with E0277 "`Cell<u32>` cannot be shared between threads safely". `String`,
+`Arc<str>`, `Counted` and `Traced` own their data (or borrow only `'static`
+data), so they are `'static`, and every one of them is dropped when the logger
+thread finishes: `'static` constrains the TYPE, it does not make the value live
+forever. Formatting on the caller's side (`let line = format!(..);` and then
+spawning a closure that just returns `line`) needs no `'static` bound at all,
+but a test checks that the message was formatted and dropped on the logger
+thread. Passing `&local` is still rejected (E0597 "`local` does not live long
+enough ... argument requires that `local` is borrowed for `'static`"). If the
+threads only need to BORROW and you join them before returning, use
+`std::thread::scope` instead. See also `20_threads` and, later, the
+`Send + 'static` bound in `29_async_runtime/runtime3`."""
+
+[[exercises]]
+name = "lifetimes8"
+dir = "25_lifetimes_deep"
+hint = """
+E0310 "the parameter type `impl Fn(&str)` may not live long enough": `Handler`
+is `Box<dyn Fn(&str)>`, and a boxed trait object written in a signature, field
+or type alias defaults to `+ 'static`. The `impl Fn(&str)` parameter has no such
+bound (it may borrow locals), so rustc refuses to box it as a `'static` handler.
+Don't take rustc's `+ 'static` suggestion: the tests' closures borrow `log`,
+`count` and `seen`, so it turns into E0373 "closure may outlive the current
+function, but it borrows `log`" (and E0505 where a test moves `log`). Give the
+bus a lifetime parameter and put it on the trait object, so handlers may borrow
+anything that outlives the bus:
+```
+type Handler<'a> = Box<dyn Fn(&str) + 'a>;
+
+struct EventBus<'a> {
+    handlers: Vec<Handler<'a>>,
+}
+
+impl<'a> EventBus<'a> {
+    // `new` and `emit` do not change.
+    fn on(&mut self, f: impl Fn(&str) + 'a) {
+        self.handlers.push(Box::new(f));
+    }
+}
+```
+Both halves are needed. A lifetime on the method alone (`fn on<'a>(..)`) leaves
+the field's `Box` at `'static`, so E0310 stays, and `EventBus<'a>` without
+`+ 'a` on `f` gives E0309 "the parameter type `impl Fn(&str)` may not live long
+enough". `fn on<F: Fn(&str) + 'a>(&mut self, f: F)` is the same bound with a
+named generic, and the alias is optional (`Vec<Box<dyn Fn(&str) + 'a>>`). A
+`move` closure that owns its state is still accepted, because a `'static` type
+outlives any `'a`. The defaults to remember: `Box<dyn Trait>`, `Rc<dyn Trait>`
+and `Arc<dyn Trait>` mean `+ 'static`, and `&'a dyn Trait` means
+`&'a (dyn Trait + 'a)`. Declare borrowed data BEFORE the bus: the bus is dropped
+first, and rustc assumes a `dyn Fn` may use its borrows in its destructor
+(E0597 otherwise). See also `33_closures/closure1` for E0373 and
+`35_error_design/err2` for `dyn Error + 'static`."""
+
+[[exercises]]
+name = "lifetimes9"
+dir = "25_lifetimes_deep"
+hint = """
+E0515 "cannot return reference to function parameter `s`": `s` is dropped when
+the function returns, so `&s` would dangle, and no annotation changes that. A
+`&'static str` needs text that is never freed, so give up ownership of the heap
+buffer on purpose:
+```
+fn leak_config(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+```
+`s.leak()` (`String::leak`, Rust 1.72) works too, and also leaks any spare
+capacity. `Box::leak(Box::new(s))` works as well, but leaks the `String` header
+on top of the text. Copying first (`s.clone()`, `to_owned()`, `format!`) fails
+the heap-address test, and a `static OnceLock<String>` can be set only once, so
+the second config would come back as the first. Leaking is safe (no `unsafe`,
+nothing dangles), and clippy's `mem_forget` lint, which only looks for calls to
+`std::mem::forget`, does not fire. It is the right call only for a bounded amount
+of data that has to live until exit anyway (config, command-line arguments),
+never once per call: in `37_borrowck_errors/borrowck2`, leaking to escape E0515
+is the wrong answer. The module README contrasts this with `OnceLock` and
+`LazyLock` for a single global value."""
 
 # MODULE 1 · BORROW-CHECKER ERRORS — read the error, then fix the design
 # (E0499 / E0502 / E0515 / E0716 / E0382; interview drills, std + safe)
@@ -1620,6 +1842,98 @@ radius, Shape::Rectangle { width, height } => width * height }`. An empty or
 non-exhaustive body will not compile: the function must return an `f64` on every
 path, and `match` must cover both variants."""
 
+[[exercises]]
+name = "dispatch5"
+dir = "32_dispatch"
+hint = """
+The tests fail because every `downcast_ref` returns `None`. In the closure, `s`
+is a `&Box<dyn Shape>`, and `Box<dyn Shape>` is a `'static` type, so it
+implements `Any` itself. `let any: &dyn Any = s;` therefore erases the BOX, and
+each downcast compares `TypeId::of::<Box<dyn Shape>>()` with the `T` you asked
+for. Nothing warns you: clippy's `type_id_on_box` only catches the method-call
+form (`s.type_id()`), not this coercion.
+
+Erase the shape inside the box instead. Going from `&dyn Shape` to `&dyn Any`
+is a trait-upcasting coercion (stable since Rust 1.86), and it only exists when
+`Any` is a supertrait. Without that you get E0308 "expected trait `Any`, found
+trait `Shape`" (ignore its "try removing the method call" help: that is the
+original bug). Two changes:
+```
+trait Shape: Any + Debug {
+    fn area(&self) -> f64;
+}
+```
+and in `all_of`:
+```
+let any: &dyn Any = s.as_ref();
+any.downcast_ref::<T>()
+```
+`&**s` works as well as `s.as_ref()`, and so does
+`(s.as_ref() as &dyn Any).downcast_ref::<T>()`. The downcast copies nothing:
+the `&T` has the same address as the boxed value, which is what
+`returns_references_into_the_boxes` checks.
+
+What does not work: `.downcast_ref::<Box<T>>()` (a `Box<Circle>` is not a
+`Box<dyn Shape>` either); an `unsafe` pointer cast (forbidden here, and it skips
+the type check); an `as_any` method that every implementor must write (the
+tests' `Hexagon` has none: E0046). The pre-1.86 blanket helper,
+`impl<T: Any> AsAny for T`, passes only if you call it as `(**s).as_any()`:
+`s.as_any()` picks the box's own impl and brings the bug back. `Any` needs
+`'static` because a `TypeId` is computed with lifetimes erased, so every
+`Shape` implementor must now be `'static` (the README has the details)."""
+
+[[exercises]]
+name = "dispatch6"
+dir = "32_dispatch"
+hint = """
+E0038 "the trait `Node` is not dyn compatible", with the note "...because
+method `accept` has generic type parameters". A vtable holds one function
+pointer per method, but `accept<V: Visitor>` is one function PER visitor type,
+and new visitor types can appear anywhere (the tests define one), so rustc
+cannot build a vtable for `dyn Node`. `&mut impl Visitor` is the same generic
+method, and `V: Visitor + ?Sized` (which rustc's E0277 help in the test build
+suggests) does not help either: it is still a type parameter.
+
+dispatch2's fix does not apply here. `where Self: Sized` removes `accept` from
+the vtable, and then `walk`, `Branch::accept` and a test fail with "the
+`accept` method cannot be invoked on a trait object". Keep `accept` in the
+vtable and drop the type parameter by taking the visitor as a trait object:
+```
+trait Node {
+    fn accept(&self, visitor: &mut dyn Visitor);
+    // `boxed` stays as it is.
+}
+
+impl Node for Leaf {
+    fn accept(&self, visitor: &mut dyn Visitor) {
+        visitor.visit_leaf(self);
+    }
+}
+
+impl Node for Branch {
+    fn accept(&self, visitor: &mut dyn Visitor) {
+        visitor.visit_branch(self);
+        for child in &self.children {
+            child.accept(visitor);
+        }
+    }
+}
+```
+Each call now dispatches twice, once on the node's vtable (`accept`) and once
+on the visitor's (`visit_leaf` / `visit_branch`): double dispatch. `walk`
+compiles unchanged, because its `&mut V` coerces to `&mut dyn Visitor`, and
+`child.accept(visitor)` implicitly reborrows the `&mut dyn Visitor` for each
+child. `&mut (dyn Visitor + '_)` works too.
+
+Wrong turns: making the trait generic (`Node<V>`) breaks every `Box<dyn Node>`
+(E0107 missing generics for trait `Node`); taking `&mut CountingVisitor`
+rejects the tests' own visitor (E0308). A generic `accept<V>` gated with
+`where Self: Sized` next to a dyn twin (`accept_dyn`) is a real pattern for
+keeping static dispatch on concrete types, but every caller here goes through
+`dyn Node`, so they would all have to call the twin. If the node kinds were a
+closed set, an enum (dispatch4) with a generic visitor would avoid both vtables;
+rustc's help ("consider defining an enum ...") suggests exactly that."""
+
 # TRAITS & ABSTRACTION · Closures — Fn / FnMut / FnOnce
 [[exercises]]
 name = "closure1"
@@ -1675,6 +1989,76 @@ in `Box::new(...)`. `adder` needs no change — it returns the same closure type
 on every call, so `impl Fn` is fine there. (Note: closures that capture nothing
 can coerce to a plain `fn` pointer and would have unified — it's the captured
 `step` that keeps them distinct.)"""
+
+[[exercises]]
+name = "closure5"
+dir = "33_closures"
+hint = """
+Two errors, one idea: in `Fn(&T) -> X` the argument's lifetime is higher-ranked, but anything named outside that binder is fixed.
+
+`measure_greeting`, E0597 "`greeting` does not live long enough ... argument requires that `greeting` is borrowed for `'a`": `'a` is a parameter of the function, so the CALLER picks it, and it outlives the whole call. A local buffer dies inside the call, so it can never be borrowed for `'a`. Drop the fn-level lifetime. The elided `Fn(&str)` already means "for every lifetime":
+```
+fn measure_greeting<F: Fn(&str) -> usize>(name: &str, measure: F) -> usize {
+```
+Written out, that bound is `F: for<'a> Fn(&'a str) -> usize`, which is equally correct. Making the greeting `'static` (a literal, or `String::leak`) also compiles, but it either changes what is measured or leaks memory on every call.
+
+`sort_by_name`, "lifetime may not live long enough ... returning this value requires that `'1` must outlive `'2`": `sort_by_key` is bounded by `F: FnMut(&T) -> K`, and `K` is one type chosen outside the implicit `for<'a>`, so the key cannot borrow from the element it came from. Compare in place instead. The comparator returns an `Ordering`, which borrows nothing:
+```
+people.sort_by(|a, b| a.name.cmp(&b.name));
+```
+`sort_by` is stable, like `sort_by_key`. `sort_unstable_by` is not, and the test with repeated names catches it, as it also catches breaking ties by age. `sort_by_key(|p| p.name.clone())` compiles but allocates two new `String`s for every comparison. If you really need owned keys, `sort_by_cached_key` computes each key only once. A copied key such as `sort_by_key(|p| p.age)` is fine, because a `u32` borrows nothing. The same limit comes back for async callbacks in `closure8`."""
+
+[[exercises]]
+name = "closure6"
+dir = "33_closures"
+hint = """
+E0597 "`c` does not live long enough ... argument requires that `c` is borrowed for `'a`", once for every `&c`. `stats` owns `c` (it was moved in), so every borrow of it ends before `stats` returns. But `'a` is a lifetime parameter of the function, picked by the caller and longer than the call, so `where &'a C: IntoIterator` only says that borrows lasting THAT long can be iterated. Move the lifetime into the bound with a higher-ranked `for<'a>`, so the impl is promised for every lifetime, including the short borrows inside the body:
+```
+fn stats<C>(c: C) -> (usize, i32, Option<i32>)
+where
+    for<'a> &'a C: IntoIterator<Item = &'a i32>,
+{
+```
+The `C: 'a` bound goes away together with the fn-level `'a`. This is the bound behind `for x in &c`. Elision cannot write it for you, because it is not an `Fn(..)` bound: a bare `&C` in a where clause is E0637 (compare `closure5`). The binder does not force `C: 'static` either, and adding that bound breaks the test with a `Window` that borrows a local array. The tests also reject the tempting dodges: `C: IntoIterator<Item = i32> + Clone` (copies the container for every pass, and `Readings` is neither `Clone` nor iterable by value), collecting into a `Vec` first (the borrow for the collect still hits E0597), and `Box::leak`-ing `c` to get a long enough borrow (the test that checks `Readings` gets dropped fails)."""
+
+[[exercises]]
+name = "closure7"
+dir = "33_closures"
+hint = """
+Both let-bound closures fail on their own with "lifetime may not live long enough ... returning this value requires that `'1` must outlive `'2`", and boxing them as a `Stage` gives E0308 "one type is more general than the other". A closure bound with `let` has no expected type, so rustc gives its `&str` parameter a fresh lifetime on every call but infers ONE fixed lifetime for the returned `&str`. `Box<dyn Fn(&str) -> &str>` needs `for<'a> Fn(&'a str) -> &'a str`. Annotating `-> &str` on the closure changes nothing, because closures do not use the fn elision rules.
+
+Give the closures an expected signature. The simplest way is to write them inline, like the middle stage already is:
+```
+pipeline.push(Box::new(|s| s.trim()));
+pipeline.push(Box::new(|s| s.strip_prefix('>').unwrap_or(s).trim_start()));
+pipeline.push(Box::new(|s| s.split_whitespace().next().unwrap_or(s)));
+```
+To keep the `let` bindings, pass each closure through an identity helper whose bound supplies the signature (`F: Fn(&str) -> &str` is the higher-ranked `for<'a> Fn(&'a str) -> &'a str`):
+```
+fn text_stage<F: Fn(&str) -> &str>(f: F) -> F {
+    f
+}
+
+let trim = text_stage(|s| s.trim());
+```
+A named `fn trim(s: &str) -> &str`, the path `str::trim`, `let trim: Stage = Box::new(|s| s.trim());` or `let trim: fn(&str) -> &str = |s| s.trim();` all work too, because each gives the closure (or fn item) the full elided signature. Casting with `Box::new(|s: &str| s.trim()) as Stage` does not: the cast comes too late to guide inference. Adding a lifetime parameter to `Pipeline` instead ties the whole pipeline to one input lifetime, and a test rejects that. The direct syntax `for<'a> |s: &'a str| -> &'a str { .. }` is still unstable (E0658)."""
+
+[[exercises]]
+name = "closure8"
+dir = "33_closures"
+hint = """
+"captured variable cannot escape `FnMut` closure body": `|| attempt(log)` returns a future that holds the closure's captured `&mut Vec`, but `F: FnMut() -> Fut` fixes one future type `Fut` outside the call, so that future may not borrow the closure. The test's `async ||` closure is rejected for the same reason ("async closure does not implement `FnMut` because it captures state from its environment"). Bound `retry` by `AsyncFnMut`, whose calls return a future that keeps the closure borrowed until it is done, and name the output instead of the future type:
+```
+async fn retry<F>(mut op: F, max_attempts: usize) -> Option<u32>
+where
+    F: AsyncFnMut() -> Option<u32>,
+{
+```
+The loop stays as it is, since `op().await` works the same. Then make the caller's closure async, so its future may reborrow the captured `log`:
+```
+retry(async || attempt(log).await, 5).await
+```
+(`async move ||` works too.) An async block inside a plain closure, `|| async { attempt(log).await }`, is not enough: it is still a plain closure whose future escapes the call. `AsyncFnMut` is in the prelude (stable since Rust 1.85), and plain closures that return a future still satisfy it, which is why the `ready(..)` tests keep working. `AsyncFn` would be too strict (these closures mutate their captures), and `AsyncFnOnce` could be called only once. Wrapping the log in a `RefCell` and keeping the old bound makes `fetch` compile, but the test `retry_lends_captures_to_each_call` still does not. The same trick applies to arguments: `for<'a> Fn(&'a u8) -> Fut` cannot let the future borrow the argument, but `AsyncFn(&u8)` can (compare `sort_by_key` in `closure5`)."""
 
 # TRAITS & ABSTRACTION · Iterators — implementing Iterator, custom adapters, laziness
 [[exercises]]
@@ -1804,6 +2188,166 @@ type (`Debug` + `Display` + `Error`) rather than a `String`, which is what lets 
 caller match on it, print it, and wrap it with `?`. Implementing `TryFrom` also
 gives you `TryInto` for free."""
 
+[[exercises]]
+name = "err4"
+dir = "35_error_design"
+hint = """
+Two errors. E0599 "no method named `context` found for enum `Result<T, E>`": `Context`
+is an extension trait, and its method only exists on types that an impl covers.
+E0308 "mismatched types": `chain` has an empty body.
+
+The blanket impl keeps the error ITSELF as the cause (boxed), which is what lets the
+tests downcast the root cause later:
+```
+impl<T, E> Context<T> for Result<T, E>
+where
+    E: Error + Send + Sync + 'static,
+{
+    fn context(self, msg: &str) -> Result<T, Report> {
+        self.map_err(|e| Report {
+            msg: msg.to_string(),
+            source: Some(Box::new(e)),
+        })
+    }
+}
+```
+The second impl may sit next to it only because `Report` is not an `Error` (if it were,
+`E = Report` would match both impls: E0119). The old report becomes the new report's
+source through the given `From<Report> for BoxError`, which wraps it in `Layer`:
+```
+impl<T> Context<T> for Result<T, Report> {
+    fn context(self, msg: &str) -> Result<T, Report> {
+        self.map_err(|inner| Report {
+            msg: msg.to_string(),
+            source: Some(inner.into()),
+        })
+    }
+}
+```
+anyhow uses the same trick: its `Context` impl for `Result<T, E>` goes through a private
+helper trait with one blanket impl for std errors and one for `anyhow::Error`. A single
+`impl<T, E: Into<BoxError>> Context<T> for Result<T, E>` also passes: std's `From`
+covers every `Error + Send + Sync + 'static`, and the given `From` covers `Report`.
+
+For `chain`, start with your own `msg` and follow `source()` to the end. The first link
+is a `&(dyn Error + Send + Sync)`, every later one a `&(dyn Error + 'static)`, and a
+coercion won't happen inside an `Option`, so `map` the first one:
+```
+let mut lines = vec![self.msg.clone()];
+let mut next = self.source.as_deref().map(|e| e as &(dyn Error + 'static));
+while let Some(err) = next {
+    lines.push(err.to_string());
+    next = err.source();
+}
+lines
+```
+Iterator version: `iter::once(self.msg.clone())` chained with
+`iter::successors(first, |&e| e.source())` mapped through `to_string`. Write the closure
+as `|&e|`: `|e| e.source()` reborrows through the closure argument and is rejected with
+"lifetime may not live long enough". std's own `Error::sources()` is still unstable
+(`error_iter`), so every crate writes this loop.
+
+The tests catch the shortcuts. Stringifying the cause (`e.to_string().into()`) keeps
+the text, but the root no longer downcasts to `ParseIntError`. `format!("{msg}: {e}")`
+merges two links into one. Dropping the old report's `msg` loses a line. And
+`impl Error for Report` is E0119 twice over: against the given `From` impl, and against
+the `Label` pair in the tests, which mirrors the two `Context` impls. anyhow spells
+this `.context("...")`, plus `.with_context(|| format!(...))`, which builds the message
+only on the error path."""
+
+[[exercises]]
+name = "err5"
+dir = "35_error_design"
+hint = """
+E0277 "`dyn std::error::Error` cannot be sent between threads safely" at
+`thread::spawn` (its closure's result must be `Send + 'static`), and E0277 "... cannot
+be shared between threads safely" in the scoped-thread test (it borrows `&err`, and a
+`&T` is `Send` only when `T: Sync`). A trait object carries only the auto traits written
+in its type, so put them into the alias:
+```
+type BoxError = Box<dyn Error + Send + Sync + 'static>;
+```
+(`'static` is already the default for a boxed trait object in an alias; writing it out
+says what you mean.) Nothing else has to change: `?` and `.into()` keep working because
+std has `From<E: Error + Send + Sync>`, `From<String>` and `From<&str>` for exactly this
+box. `Box<dyn Error + Send>` is not enough: the sharing test still fails, and std has
+no `From` impls for that type at all, so `?` stops working too.
+
+Then E0308 "mismatched types" for the empty `verdict`. Ask the trait object about each
+concrete type in turn. `downcast_ref` compares `TypeId`s, so a look-alike message of
+another type never matches:
+```
+if let Some(parse) = err.downcast_ref::<ParseIntError>() {
+    Verdict::Malformed(*parse.kind())
+} else if err.is::<ZeroNotAllowed>() {
+    Verdict::Zero
+} else {
+    Verdict::Other(err.to_string())
+}
+```
+`downcast_ref` and `is` are defined on `dyn Error + 'static` (and on its `+ Send` and
+`+ Send + Sync` versions), which is why the parameter is `&(dyn Error + 'static)`. With
+a plain `&dyn Error` the object lifetime defaults to the reference's, and calling
+`downcast_ref` is E0521 "borrowed data escapes outside of function". The by-value form
+is `err.downcast::<ParseIntError>()` on the box: `Result<Box<ParseIntError>, BoxError>`,
+giving the box back on a miss. A `"text".into()` error can't be downcast to `String`
+(`String` is not an `Error`; std boxes the text in a private type), which is why
+`Other` falls back to `to_string()`.
+
+The tests catch the shortcuts. Matching on `err.to_string()` fails the look-alike
+test, turning the error into a `String` inside the worker fails the downcast tests, and
+an `unwrap` in the worker turns bad input into a panic. `IntErrorKind` is
+`#[non_exhaustive]`, which part 6 comes back to."""
+
+[[exercises]]
+name = "err6"
+dir = "35_error_design"
+hint = """
+E0119 "conflicting implementations of trait `From<Report>` for type `Report`": core has
+`impl<T> From<T> for T`, and because `Report` implements `Error`, the blanket
+`From<E: Error + Send + Sync + 'static>` produces a second `From<Report> for Report`.
+Stable Rust has no specialization, so one impl has to go, and the tests need the
+blanket `From`. Delete `impl Error for Report`. That is anyhow's choice, and it is why
+`anyhow::Error` is not a `std::error::Error`.
+
+Then give callers back what `Error` gave them. Inspection, for the E0599 on `as_ref`:
+```
+impl AsRef<dyn Error + Send + Sync> for Report {
+    fn as_ref(&self) -> &(dyn Error + Send + Sync + 'static) {
+        &*self.0
+    }
+}
+```
+Keep the `'static` in the return type: `AsRef<dyn Error + Send + Sync>` means
+`+ 'static`, and a bare `&(dyn Error + Send + Sync)` return type would mean the
+reference's lifetime, which rustc rejects with "`impl` item signature doesn't match
+`trait` item signature".
+
+Hand-off, for the E0277s on `?` and `.into()` that appear once `Report` is no longer an
+`Error`. Give up the box the report already owns instead of boxing the report again:
+```
+impl From<Report> for BoxError {
+    fn from(report: Report) -> Self {
+        report.0
+    }
+}
+```
+This impl is legal only because `Report` is not an `Error`; otherwise std's
+`From<E: Error + Send + Sync>` for boxes would already cover it (E0119 again, the same
+fact part 4 relied on). anyhow also has
+`Deref<Target = dyn Error + Send + Sync + 'static>`, `AsRef<dyn Error>`, and
+`From<anyhow::Error>` for `Box<dyn Error>` and `Box<dyn Error + Send>`. Adding those
+here is fine too (the tests name the `AsRef` target, so two `AsRef` impls stay
+unambiguous).
+
+The shortcuts fail. Keeping `impl Error` and writing one `From` per error type
+(`ParseIntError`, `ParseFloatError`, `MissingStar`) breaks the generic `wrap` helper in
+the tests with E0277. A `From<Report> for BoxError` that stringifies the report, or
+wraps it in a second error type, fails the downcast and same-allocation tests. The
+design rule behind all of this: libraries expose matchable (often `#[non_exhaustive]`)
+error enums, so callers can branch on the cause; applications use an opaque report
+like this one, add context, and downcast when they must."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
@@ -1867,6 +2411,161 @@ bucket.push((key, value));
 
 get: `self.buckets[idx].iter().find(|(k, _)| k == key).map(|(_, v)| *v)`
 (`i32` is `Copy`)."""
+
+[[exercises]]
+name = "linkedlist2"
+dir = "27_data_structures"
+hint = """
+The empty body is E0308 "mismatched types": the signature promises an
+`Option<Box<ListNode>>`, and a body without a tail expression evaluates to `()`.
+Returning `head` (rustc's suggestion) compiles, but nothing is reversed: only the
+empty and single-node tests pass.
+
+Reverse by MOVING nodes. `prev` holds the part already reversed, `cur` the rest
+of the input. Each round detaches the current node's tail into `cur`, points the
+node at `prev`, and makes it the new `prev`:
+```
+let mut prev = None;
+let mut cur = head;
+while let Some(mut node) = cur {
+    cur = node.next.take();
+    node.next = prev;
+    prev = Some(node);
+}
+prev
+```
+The two middle lines can be one: `cur = std::mem::replace(&mut node.next, prev);`.
+Because you own `node`, plain moves work too (`cur = node.next;` and then
+`node.next = prev;`): you may move a field out of a `Box` you own and assign it
+again. `take` is required only when all you have is a `&mut`, as in
+`linkedlist1`'s `pop`.
+
+Why the shortcuts fail the tests: collecting the values into a `Vec` and building
+a new list creates new nodes with new serial numbers (they may even reuse the
+freed addresses, which is why the tests do not rely on addresses alone). Swapping
+the VALUES along the list leaves the nodes in their old order. A recursive
+reverse relinks correctly but needs one stack frame per node, so the 200_000-node
+test overflows the test thread's stack. If the run aborts with "has overflowed
+its stack" instead of reporting FAILED, look for recursion, or for a long input
+list being dropped inside `reverse` (its drop glue is recursive, as `linkedlist1`
+explains). Interview answer: O(n) time, O(1) extra space, each node visited once."""
+
+[[exercises]]
+name = "linkedlist3"
+dir = "27_data_structures"
+hint = """
+The empty body is E0308 "mismatched types" (expected `Option<Box<ListNode>>`,
+found `()`). Returning `a` or `b`, as rustc notes you could, compiles but merges
+nothing.
+
+Keep a cursor at the END of the result: `tail` is a `&mut` to the empty link where
+the next node goes. `Option::insert` stores a node there and returns `&mut` to it,
+so borrowing that node's `next` moves the cursor onto the new empty link:
+```
+fn merge(mut a: Option<Box<ListNode>>, mut b: Option<Box<ListNode>>) -> Option<Box<ListNode>> {
+    let mut head = None;
+    let mut tail = &mut head;
+    while let (Some(x), Some(y)) = (&a, &b) {
+        // `<=` takes from `a` on ties: a stable merge.
+        let source = if x.val <= y.val { &mut a } else { &mut b };
+        if let Some(mut node) = source.take() {
+            *source = node.next.take();
+            tail = &mut tail.insert(node).next;
+        }
+    }
+    // One input is empty and the other is already sorted.
+    *tail = a.or(b);
+    head
+}
+```
+`tail = &mut tail.insert(node).next` compiles because the new cursor is a
+reborrow THROUGH the old one, and the old one is overwritten in the same
+statement: there is never a second, independent `&mut` into the result. After
+the last use of `tail`, `head` is free to return. Adding `mut` to the parameters
+changes only the bindings, not the function's type.
+
+Alternatives the tests accept: `match (a, b)` by value, putting the unused node
+back into its variable in each arm; or a dummy head (`let mut dummy =
+Box::new(ListNode::new(0));` with `tail: &mut Box<ListNode>` and `dummy.next` at
+the end), which costs one extra node that is not part of the result. What fails:
+`<` instead of `<=` takes `b` first on ties (the stability tests); a recursive
+merge overflows the stack on the 200_000-node test; sorting the values and
+building new nodes fails the serial checks. If the run aborts with "has
+overflowed its stack" instead of reporting FAILED, look for recursion, or for an
+input list being dropped inside `merge`: returning just `a` drops all 100_000
+nodes of `b`, and that drop glue is recursive (see `linkedlist1`)."""
+
+[[exercises]]
+name = "linkedlist4"
+dir = "27_data_structures"
+hint = """
+split_half fails with E0502 "cannot borrow `head` as mutable because it is also
+borrowed as immutable". `fast` (a `&`) and `slow` (a `&mut`) point into the same
+chain in every round, and a `&mut` to a link is exclusive access to every node
+after it. Deriving `fast` from `slow` (`slow.as_deref()`) only moves the E0502.
+Separate the passes: count with a shared cursor, and only THEN create the single
+`&mut` cursor:
+```
+fn split_half(mut head: Option<Box<ListNode>>) -> (Option<Box<ListNode>>, Option<Box<ListNode>>) {
+    let front_len = len(&head).div_ceil(2);
+    let mut cut = &mut head;
+    for _ in 0..front_len {
+        if let Some(node) = cut {
+            cut = &mut node.next;
+        }
+    }
+    let back = cut.take();
+    (head, back)
+}
+
+fn len(list: &Option<Box<ListNode>>) -> usize {
+    let mut count = 0;
+    let mut cur = list.as_deref();
+    while let Some(node) = cur {
+        count += 1;
+        cur = node.next.as_deref();
+    }
+    count
+}
+```
+Two traps. Writing `for _ in 0..len(&head).div_ceil(2)` AFTER `let mut cut = &mut
+head;` is E0502 again: the count has to come first. And walking with `while let
+Some(node) = cut { if steps == 0 { break; } steps -= 1; cut = &mut node.next; }`
+fails with E0499 at `cut.take()`: the borrow the pattern takes can flow into
+`cut`, so NLL still counts it as live on the `break` path. It is the same family
+of false positive as `37_borrowck_errors/borrowck3`. A counted `for` loop with an
+`if let` inside avoids it. Running fast/slow with two SHARED cursors just to count
+the steps, then walking the `&mut` cursor, also works.
+
+remove_nth_from_end: E0308 from the empty body. Count, use `checked_sub` (in a
+debug build `len - n` panics with "attempt to subtract with overflow" when
+`n > len`), walk to the link that owns the node, and replace that link with the
+node's `next`:
+```
+fn remove_nth_from_end(mut head: Option<Box<ListNode>>, n: usize) -> Option<Box<ListNode>> {
+    let Some(index) = len(&head).checked_sub(n) else {
+        return head;
+    };
+    let mut link = &mut head;
+    for _ in 0..index {
+        if let Some(node) = link {
+            link = &mut node.next;
+        }
+    }
+    if let Some(removed) = link.take() {
+        *link = removed.next;
+    }
+    head
+}
+```
+For `n == 0` the index is `len`, the empty link at the end, so `take` finds
+nothing and the list is unchanged; an unconditional `link.take().unwrap()`
+panics there. The textbook two-pointer version (a lead `&` cursor `n` nodes ahead
+of a trailing `&mut` one) is E0502 for the same reason as `split_half`, and a
+recursive version overflows the stack on the 200_000-node test. If the run aborts
+with "has overflowed its stack" instead of reporting FAILED, look for recursion,
+or for a long list being dropped inside your function (its drop glue is
+recursive, see `linkedlist1`)."""
 
 # MODULE 3 · ASYNC — Future / Poll
 
@@ -2066,6 +2765,58 @@ SPURIOUSLY (report `Err` even when the value matched) but compiles to cheaper co
 some CPUs; retrying in a loop absorbs the spurious failures. `lock` already spins with
 `std::hint::spin_loop()` until `try_lock` succeeds."""
 
+[[exercises]]
+name = "atomics4"
+dir = "36_atomics"
+hint = """
+This compiles, but `retries_after_losing_the_race`, `rechecks_the_limit_after_losing_the_race` and `a_thread_that_keeps_losing_retries_until_full` fail with `left: Ok(0)`. The body is check-then-act. It loads the value, lets the rival run inside `race_window`, then stores `current + 1` over whatever the rival wrote. So the rival's increment is lost and both callers get ticket 0. `if c.load() < max { c.fetch_add(1) }` has the same bug, because two atomic operations are not one. Publish with a compare-and-swap, which succeeds only if the value is still the one you checked, and retry when it fails:
+```
+let mut current = self.value.load(Ordering::Relaxed);
+loop {
+    if current >= max {
+        return Err(Full);
+    }
+    race_window();
+    match self.value.compare_exchange_weak(
+        current,
+        current + 1,
+        Ordering::Relaxed,
+        Ordering::Relaxed,
+    ) {
+        Ok(ticket) => return Ok(ticket),
+        Err(actual) => current = actual,
+    }
+}
+```
+A failed CAS returns `Err(actual)`, the value it found. Re-check the limit against it, since the slot may be gone. Keep retrying while slots are left: a lost race does not mean `Full`, so a retry cap fails `a_thread_that_keeps_losing_retries_until_full`. `compare_exchange_weak` may fail spuriously on LL/SC CPUs (ARM without LSE, RISC-V, POWER). Inside a loop that costs one more iteration, and it avoids the strong version's own internal loop. Check `current >= max` BEFORE computing `current + 1`, or `u64::MAX + 1` panics in the debug-mode tests. `Relaxed` is enough because the counter publishes no other memory.
+The same loop as a std combinator. `try_update` is stable since 1.95; its old name `fetch_update` is marked deprecated from 1.99:
+```
+self.value
+    .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+        race_window();
+        if v < max { Some(v + 1) } else { None }
+    })
+    .map_err(|_| Full)
+```
+Avoid `(v < max).then_some(v + 1)`: `then_some` evaluates `v + 1` eagerly and overflows at `u64::MAX`. The lazy `(v < max).then(|| v + 1)` is fine. `fetch_add` followed by an undo is also wrong: it cannot refuse, and other threads can see a value above `max`. Do not hold a lock around the body either. The rival inside `race_window` runs on the same thread, so the test deadlocks instead of failing. std's `Weak::upgrade` uses this CAS loop (through `try_update`) to bump a strong count that must never go from 0 back to 1. Compare the single strong CAS of `try_lock` in atomics3. atomics5 shows when comparing values is not enough (ABA)."""
+
+[[exercises]]
+name = "atomics5"
+dir = "36_atomics"
+hint = """
+This compiles, but three tests fail. `aba_stale_commit_is_rejected` fails with `left: Ok(0)`, `right: Err(Stale)`. `aba_never_relists_a_slot_in_use` finds slot 1 both in use and on the free list. `a_thousand_scripted_interleavings_never_double_allocate` sees T1's commit hand out a slot that T2 still holds. `next_head` always writes tag 0. So after T2 pops 0, pops 1 and pushes 0 back, the head word is bit for bit the one T1 saw, and T1's stale CAS succeeds. That is the ABA problem. A CAS compares bits, not history, so make the bits carry history: every successful CAS writes the next tag.
+```
+let (tag, _) = unpack(observed);
+pack(tag.wrapping_add(1), new_idx)
+```
+After the A-B-A the index matches but the tag has moved on, so the stale `pop_commit` returns `Err(Stale)` and `pop` retries from a fresh snapshot. Use `wrapping_add`, because the tag is a version, not a count: a plain `+ 1` panics at `u32::MAX` in the debug-mode tests, and `saturating_add` gets stuck at `u32::MAX`. These do NOT fix it:
+- a constant nonzero tag, which never changes;
+- deriving the tag from an index, which can repeat;
+- a tag that only toggles (`tag ^ 1`), which repeats after two updates;
+- stronger orderings like SeqCst, which do not change what a CAS compares;
+- re-checking `next[idx]` inside `pop_commit`, which is another check-then-act race.
+The limit is that a 32-bit tag repeats after 2^32 updates. With heap nodes on `AtomicPtr`, ABA comes together with use-after-free, so real lock-free stacks use hazard pointers or epoch-based reclamation (`crossbeam-epoch`) rather than tags alone. atomics4 covers the plain CAS retry loop that `push` and `pop` are built on."""
+
 # MODULE 5 · DEBUGGING — debugging & interview drills
 
 [[exercises]]
@@ -2120,3 +2871,113 @@ invalidation impossible. `v.iter()` borrows `v` immutably for the whole loop, so
 patch the indices (a forward index-remove would also SKIP elements, since `remove`
 shifts everything left). Replace the entire loop with one safe in-place pass:
 `v.retain(|&x| x % 2 != 0);`, which keeps the odd numbers and drops the evens."""
+
+[[exercises]]
+name = "debugging6"
+dir = "31_debugging"
+hint = """
+This compiles, but the tests panic with "RefCell already borrowed". A guard that never gets a name is a temporary, and a temporary is dropped at the end of its temporary scope, not after its last use. A `match` scrutinee is not a temporary scope of its own, so the `RefMut` from `self.lanes.borrow_mut()` stays alive until the whole `match` is done. The job runs in the `Some` arm and calls back into `submit`, and that `borrow_mut()` finds the cell still borrowed. `pop_front()` returns an owned `Job`, which ends the BORROW of the guard (so the borrow checker is happy). It does not end the guard's life, and only the guard's `Drop` releases the `RefCell`.
+
+Part A: pop in a statement of its own. A `let` statement is a temporary scope, so the guard is dropped at its `;`, before the job runs:
+```
+let next = self.lanes.borrow_mut().now.pop_front();
+match next {
+    Some(job) => {
+        self.execute(job);
+        true
+    }
+    None => false,
+}
+```
+`let Some(job) = self.lanes.borrow_mut().now.pop_front() else { return false; };` followed by `self.execute(job); true` works the same way. What does not work:
+- turning the `match` into an `if let`: the then-block still holds the guard (see `debugging7`);
+- `.map(|job| self.execute(job))` on the popped value: the guard lives until the whole expression is done;
+- one named guard held across the `match`.
+
+Edition 2024 would also accept `match { self.lanes.borrow_mut().now.pop_front() } { .. }`, because a block's tail temporaries die with the block. But Clippy's `blocks_in_conditions` suggests removing the braces, and that brings the bug back.
+
+Part B: `mem::swap(&mut self.lanes.borrow_mut().now, &mut self.lanes.borrow_mut().next)` creates two guards, and both live until the `;`. With one named guard, `mem::swap(&mut lanes.now, &mut lanes.next)` is E0499 "cannot borrow `lanes` as mutable more than once at a time". The reason: `lanes.now` means `(*DerefMut::deref_mut(&mut lanes)).now`, and that call borrows the whole guard, twice. Go through `DerefMut` once, then split the fields of the plain `&mut Lanes`. Temporary lifetime extension keeps the guard alive until the end of the function:
+```
+let lanes = &mut *self.lanes.borrow_mut();
+mem::swap(&mut lanes.now, &mut lanes.next);
+```
+`let Lanes { now, next } = &mut *self.lanes.borrow_mut(); mem::swap(now, next);` and `RefMut::map_split` work too. Wrong answers the tests catch:
+- `lanes.now = mem::take(&mut lanes.next);` compiles, but it frees the drained lane's buffer, and a test checks the capacities.
+- `lanes.now.append(&mut lanes.next)`, `lanes.now.extend(lanes.next.drain(..))` or a `pop_front` / `push_back` loop keep both buffers, but they move every job into the other buffer, which is O(n). A swap exchanges the two `VecDeque` headers in O(1), and a test checks that the waiting job is still at the same address.
+
+The same split-borrow rule for plain structs is in `37_borrowck_errors/borrowck1`."""
+
+[[exercises]]
+name = "debugging7"
+dir = "31_debugging"
+hint = """
+Both parts compile, and both panic with "RefCell already borrowed".
+
+Part A: the temporaries of a `while let` scrutinee are dropped at the end of each iteration's body. So the queue is still mutably borrowed while `attempt` runs, and the first `retry_later` panics. A `let` above the loop cannot help, because the loop has to pop again on every iteration. Pop inside the body, in a statement of its own. A `let ... else` drops its temporaries at the end of the statement, and before its `else` block when the pattern does not match:
+```
+let mut runs = 0;
+loop {
+    let Some(task) = self.queue.borrow_mut().pop_front() else {
+        break;
+    };
+    runs += 1;
+    self.attempt(task);
+}
+runs
+```
+Other fixes that work:
+- a helper method, because its guard dies when it returns: `fn pop_next(&self) -> Option<Task> { self.queue.borrow_mut().pop_front() }`, then `while let Some(task) = self.pop_next() { .. }`;
+- `let next = self.queue.borrow_mut().pop_front(); match next { .. }` inside a `loop`.
+
+`loop { if let Some(task) = self.queue.borrow_mut().pop_front() { .. } else { break } }` does NOT work: the then-block keeps the guard. Clippy's `while_let_loop` even suggests turning it back into the original `while let`. Draining the whole queue into a `Vec` first compiles, but the retries added during the loop never run. This is the thread-pool trap from the Rust Book (Listing 21-21): `while let Ok(job) = receiver.lock().unwrap().recv()` holds the `Mutex` while the job runs.
+
+Part B: edition 2024 drops an `if let` scrutinee's temporaries before the `else` block. The then-block still sees them, because the pattern's bindings may borrow from them. `pos` is a plain `usize`, but the `Ref` from `self.queue.borrow()` is still alive, so the `borrow_mut()` inside panics. Search in a statement of its own, then mutate through one guard:
+```
+let found = self.queue.borrow().iter().position(|t| t.name == name);
+if let Some(pos) = found {
+    let mut queue = self.queue.borrow_mut();
+    let task = queue.remove(pos).expect("`position` just found it");
+    queue.push_front(task);
+    true
+} else {
+    false
+}
+```
+Taking `borrow_mut()` once up front and searching through that guard works too, and so does `queue.make_contiguous()[..=pos].rotate_right(1)`. `queue.swap(0, pos)` does not: it moves the old front task to `pos` and breaks the order of the others. If two queued tasks share the name, only the first one moves, which is the one `position` finds. `rposition`, or a stable sort that pulls every matching task forward, fails that test. A plain `if` condition (no pattern) is its own temporary scope, so `if self.queue.borrow().is_empty() { .. }` never has this problem."""
+
+[[exercises]]
+name = "debugging8"
+dir = "31_debugging"
+hint = """
+The tests fail to build first: E0425 "cannot find value `MATCH_ARM_CAN_RELOCK` in this scope" (and three more) until Part B's constants exist. After that, every miss panics. The `MutexGuard` from `lock()` is a temporary of the `match` scrutinee, so it lives until the whole `match` is done. `.cloned()` ends the borrow of the guard, not the guard. The `None` arm then locks the mutex again on the same thread. With `lock()` that call "will not return" (std's `Mutex` is not reentrant), so the thread deadlocks on itself. Here `try_lock` returns `Err(WouldBlock)` instead, and `expect` panics. The test whose `compute` probes the lock fails even earlier, because `compute` runs while the lock is held.
+
+Part A: look the key up in a statement of its own, so the guard is dropped at the `;`. Compute with no lock held, then lock again to store the value. `entry(key).or_insert(value)` keeps a value that another thread stored in the meantime, and returns it:
+```
+let cached = self.map.lock().unwrap().get(&key).cloned();
+if let Some(hit) = cached {
+    return hit;
+}
+let value: Arc<str> = compute(key).into();
+Arc::clone(self.map.lock().unwrap().entry(key).or_insert(value))
+```
+The second lock is a plain `lock()` again: no guard of ours is alive, and `try_lock` would also fail whenever ANOTHER thread holds the mutex. `let Some(hit) = self.map.lock().unwrap().get(&key).cloned() else { .. };` with the computation in the `else` block works too, because a `let ... else` drops its temporaries before `else` runs. In edition 2024 even `if let Some(hit) = ...cloned() { hit } else { .. }` works, because the guard is dropped before `else`. But the same code deadlocks in edition 2021, and it turns back into the bug the moment someone rewrites it as a `match`.
+
+Wrong answers the tests catch:
+- `entry(key).or_insert_with(..)` with `compute` inside the closure holds the lock while computing.
+- A plain `insert` after computing overwrites the value the other thread stored.
+- Copying the whole map out of the mutex (`self.map.lock().unwrap().clone()`) frees the lock but copies every entry on every lookup. A test counts the `Arc` handles while `compute` runs.
+
+To avoid the duplicate computation as well, you would need a per-key single flight (a `OnceLock` per key, for example).
+
+Part B, with the reason for each answer:
+```
+// A `match` scrutinee is not a temporary scope: the guard lives through every arm.
+const MATCH_ARM_CAN_RELOCK: bool = false;
+// The then-block keeps the scrutinee's temporaries (its bindings may borrow from them).
+const IF_LET_THEN_CAN_RELOCK: bool = false;
+// Edition 2024 drops them before `else` runs (in 2021 this was `false`).
+const IF_LET_ELSE_CAN_RELOCK_2024: bool = true;
+// A `let` statement drops its temporaries at the `;`.
+const LET_STMT_CAN_RELOCK: bool = true;
+```
+See also `debugging6` (the `RefCell` version) and `debugging7` (`while let` and the 2024 `if let` rules)."""

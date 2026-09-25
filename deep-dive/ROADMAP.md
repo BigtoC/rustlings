@@ -44,11 +44,17 @@ learner path is set by where its `[[exercises]]` entries go in
 Done:
 
 - [x] `37_borrowck_errors` — `borrowck1..4` — built; passes `cargo dev check --require-solutions`
+- [x] Extend `24_ownership_model` — `ownership4..6` — built
+- [x] Extend `25_lifetimes_deep` — `lifetimes7..9` — built
+- [x] Extend `35_error_design` — `err4..6` — built
+- [x] Extend `31_debugging` — `debugging6..8` — built
+- [x] Extend `33_closures` — `closure5..8` — built
+- [x] Extend `32_dispatch` — `dispatch5..6` — built
+- [x] Extend `36_atomics` — `atomics4..5` — built
+- [x] Extend `27_data_structures` — `linkedlist2..4` — built
 
 Tier 1, not started:
 
-- [ ] Extend `24_ownership_model` — `ownership4..6`
-- [ ] Extend `25_lifetimes_deep` — `lifetimes7..9`
 - [ ] `39_drop_raii` — `drop1..2`, `raii1..4`
 - [ ] `40_interior_mutability` — `cell1..4`
 - [ ] `41_memory_layout` — `layout1..2`
@@ -57,12 +63,10 @@ Tier 1, not started:
 - [ ] `44_trait_contracts` — `contracts1..3`
 - [ ] `45_sized_deref` (Deref / Borrow / Cow part) — `deref1..2`, `borrow1`, `cow1`
 - [ ] `47_type_level` — `builder1`, `typestate1`
-- [ ] Extend `35_error_design` — `err4..6`
 - [ ] `50_testing_seams` — `seams1..3`
 - [ ] `51_scoped_threads` — `scope1..3`
 - [ ] `52_condvar` — `condvar1..3`
 - [ ] `53_lock_hazards` — `deadlock1`, `rwlock1`
-- [ ] Extend `31_debugging` — `debugging6..8`
 - [ ] `54_channels` — `channel1..3`
 - [ ] `56_async_bounds` — `async_send1..4`
 - [ ] `57_async_combinators` — `join1`, `select1`, `cancel1`
@@ -76,15 +80,11 @@ Tier 1, not started:
 Tier 2, not started:
 
 - [ ] `38_variance` — `variance1..2`
-- [ ] Extend `33_closures` — `closure5..8`
 - [ ] `45_sized_deref` (`?Sized` part) — `sized1..3`
-- [ ] Extend `32_dispatch` — `dispatch5..6`
 - [ ] Quizzes after `47_type_level` — `quiz4_resolution`, `quiz5_compiles`, `quiz6_borrowck`
 - [ ] `48_macros_deep` — `macros5..8`
 - [ ] `49_panics` — `panic1..3`
-- [ ] Extend `36_atomics` — `atomics4..5`
 - [ ] Quiz `quiz7_send_sync` — `quiz_send_sync`, `quiz_orderings`
-- [ ] Extend `27_data_structures` — `linkedlist2..4`
 - [ ] `61_trees` — `bst1..4`
 - [ ] `62_graphs` — `graph1..4`, `grid1..2`
 - [ ] `64_parsing` — `parse1..3`
@@ -105,9 +105,11 @@ Deep-dive labs, not started:
 
 Build these first. Modules are listed in the merge step's proposed learner order.
 
-### Extend `24_ownership_model`
+### Extend `24_ownership_model` (built)
 
 Theme: moving out of `&mut` and out of `Drop` types (`ownership4..6`).
+
+**As built** (see `exercises/24_ownership_model/`): `ownership5`'s `on_connected` returns `Result<(), Session>` (the unused session goes back to the caller), and there are two transitions (`on_connected`, `close`) instead of three. `Session` counts its drops, so swapping in a dummy session fails a test. On rustc 1.96 the E0509 text reads ``cannot move out of type `Connection<'_>` ``, because the struct borrows the test's log.
 
 #### Moving out of `&mut`: `mem::take`, `mem::replace`, enum state transitions, E0507 and E0509
 
@@ -142,9 +144,11 @@ Theme: read-the-error gauntlet (E0499, E0502, E0515, E0716, E0382, NLL problem c
 - Module-37 rule (interview-style recall): each TODO names the diagnostic (E-code plus short rustc wording) and the constraints (no `.clone()`, no `unsafe`, don't change the tests) but not the fix. The `info.toml` hint carries the full fix.
 - Problem case #3 recurs in `quiz6_borrowck`, `bst4` and `seams3`: keep `borrowck3` as the canonical exercise and cross-reference it from those.
 
-### Extend `25_lifetimes_deep`
+### Extend `25_lifetimes_deep` (built)
 
 Theme: `'static` in practice: `T: 'static` vs `&'static T`, default trait-object lifetimes, leaking. This also makes the COURSE.md claim that module 25 covers `'static` true.
+
+**As built** (see `exercises/25_lifetimes_deep/`): `lifetimes7` fails with E0308 in the tests until the bound is `T: Display + Send + 'static`; a test-only `Traced` type checks that formatting happens on the logger thread, and a message type that is `Send` but not `Sync` (it holds a `Cell`) rejects an unneeded `Sync` bound. `lifetimes8` fails with E0310, `lifetimes9` with E0515. The LazyLock/OnceLock contrast uses std doc links, not a cross-reference to the not-yet-built `40_interior_mutability`; add it when that module lands.
 
 #### `'static` in practice: `T: 'static` vs `&'static T`, `Box<dyn Trait>` defaults to `+ 'static`, leaking for `&'static`
 
@@ -335,9 +339,11 @@ Theme: runtime-checked builder, then typestate (the derive-bound and const-gener
   - Graded bins can only check that correct code compiles, so the negative check ("`send()` without `url()` must not compile") lives in `api-surface-lab` as a `compile_fail` doctest.
   - Tests: defaults fill in; `&str` and `String` are both accepted; tags extend; missing host and `workers(0)` return errors; struct update `..ServerConfig::default()` works; the typestate request has its url and 2 headers; the `NoUrl` and `HasUrl` builders have the same `size_of`.
 
-### Extend `35_error_design`
+### Extend `35_error_design` (built)
 
 Theme: context chains, `Send + Sync` errors, downcasting, an anyhow-style `Report` (`err4..6`).
+
+**As built** (see `exercises/35_error_design/`): `err4` gives a `From<Report> for BoxError` impl, so the shortcut "implement `Error` for `Report`" is rejected with E0119. `err6` also has the learner write `From<Report> for BoxError` (the anyhow hand-off). `err4`'s and `err6`'s `Report` types are separate structs; each file stands alone.
 
 #### Production errors: context chains, `Box<dyn Error + Send + Sync>`, downcasting, why anyhow's error type isn't `Error`
 
@@ -428,9 +434,11 @@ Theme: lock-ordering deadlocks and `RwLock` semantics.
   - README: OS-dependent reader/writer priority; a recursive read may deadlock.
   - A natural extension is lock striping and hot-swapped config; see [Additional topics](#additional-topics-not-yet-verified).
 
-### Extend `31_debugging`
+### Extend `31_debugging` (built)
 
 Theme: guards kept alive by `match` / `while let` / `if let` scrutinee temporaries (`debugging6..8`).
+
+**As built** (see `exercises/31_debugging/`): `debugging6` Part B absorbs the RefMut field-split trick from the cut `leetcode-rc-refcell-trees`, and `debugging7` Part B absorbs `lc_tree4`. `debugging8` catches the self-deadlock with `try_lock` (it can never hang), adds a "first stored value wins" requirement, and ends with auto-graded constants on where each guard dies. On 1.96 the RefCell panic message is "RefCell already borrowed"; the older `debugging4` hint still quotes the previous wording.
 
 #### Guards kept alive by scrutinee temporaries: RefCell panics and Mutex self-deadlock
 
@@ -639,9 +647,11 @@ Theme: variance, `PhantomData` marker choice, the borrowed-forever bug. Placed a
   - The will-it-compile variance drills belong to `resolution-compile-quiz`, and the soundness demo (an unsound covariant cell) to `miri-ub-zoo`.
   - README: the Nomicon variance table; `dyn Fn(T)` is not contravariant (trait-object arguments are invariant).
 
-### Extend `33_closures`
+### Extend `33_closures` (built)
 
 Theme: closure bounds beyond the basics: higher-ranked `for<'a>` and async closures (`closure5..8`).
+
+**As built** (see `exercises/33_closures/`): The `sort_by_key(|p| &p.name)` anchor is Part B of `closure5`. `closure8` ships its own `block_on` that panics on `Pending` instead of spinning, so a wrong fix can never hang the tests.
 
 #### Closure bounds beyond basics: higher-ranked `for<'a>`, IntoIterator over `&C`, let-bound closure inference, async closures
 
@@ -677,9 +687,11 @@ Theme: `?Sized`, DSTs and forwarding impls. The Deref / Borrow / Cow half is in 
   - Tests: sized1 `"a,b"`, a mixed dyn slice `"1,x"`, and sized `T` still works; sized2 boxed slice sums to `PI + 4`, `&[&c, &c]` is `2 * PI`, the borrowed mock records the call after the service used it; sized3 `checksum == 10`, `payload.to_string() == "7.5"`, `size_of::<&Packet<[u8]>>()` is 2W and `&Packet<[u8; 4]>` is W, `size_of_val(&*b) == 8`.
   - *(scope)* sized3 (a user-defined DST with an unsized last field) is niche; it could move to the README or the layout quiz.
 
-### Extend `32_dispatch`
+### Extend `32_dispatch` (built)
 
 Theme: `Any` downcasting via trait upcasting; generic methods vs dyn compatibility (`dispatch5..6`).
+
+**As built** (see `exercises/32_dispatch/`): `dispatch5` downcasts with a generic `all_of::<T: Any>()` (so a closed-world `as_circle` hook cannot pass) and fails at run time (0 found instead of 2). `dispatch6` was kept despite the *(scope)* note: it teaches the case where `dispatch2`'s `where Self: Sized` is the wrong fix, and pins a `&mut dyn Visitor` signature.
 
 #### Advanced trait objects: downcasting via Any and trait upcasting, generic methods vs dyn compatibility
 
@@ -752,9 +764,11 @@ Theme: `catch_unwind`, payloads, poisoning, panic safety.
   - Tests: panic1 `Ok` path, `panic!("boom")` gives `"boom"`, a formatted panic gives `"job 7 failed"`, `panic_any(42u8)` gives the fallback; panic2 `is_poisoned()` is true before, `total == sum(entries)` after, and a later `lock()` is `Ok`.
   - *(scope)* panic1 and panic2 are the valuable pieces; panic3 is senior-niche but short.
 
-### Extend `36_atomics`
+### Extend `36_atomics` (built)
 
 Theme: weak-CAS / `fetch_update` loops and ABA (`atomics4..5`).
+
+**As built** (see `exercises/36_atomics/`): `atomics4` keeps the load-then-store starter but makes the lost race deterministic with a `race_window` test seam, so it fails on every run; the 8-thread stress tests remain as solution-quality checks. The solution uses a `compare_exchange_weak` loop; the hint shows `try_update` (stable since 1.95; `fetch_update` is being deprecated in 1.99). `atomics5` confines the learner's change to `next_head` and cross-references the planned Treiber-stack lab; update those references when the lab lands. The module README's std links now point at `Atomic<T>`, because the old `AtomicUsize` / `AtomicBool` doc pages return 404.
 
 #### CAS retry loops and the ABA problem
 
@@ -788,9 +802,11 @@ Theme: `Send` / `Sync` of std types. Proposed position: after `55_thread_pool`, 
   - *(scope)* Move the store-buffering litmus items to `lock-free-ordering-lab`.
   - The message-passing litmus constants were dropped during the merge (`atomics2` and `loom_lab` already cover them).
 
-### Extend `27_data_structures`
+### Extend `27_data_structures` (built)
 
 Theme: LeetCode `ListNode` classics (`linkedlist2..4`).
+
+**As built** (see `exercises/27_data_structures/`): Correction to the authoring note: address checks alone do NOT reject a rebuilt list, because the allocator reuses freed blocks LIFO; the tests also number every node (a serial id). A relink through a `Vec<Box<ListNode>>` still passes, since it reuses the original nodes; the TODOs forbid it in prose. Recursive answers are rejected by 200_000-node tests, which abort the test binary with a stack overflow rather than printing FAILED.
 
 #### LeetCode ListNode classics: reverse, merge with a tail cursor, split-half and remove-nth
 
