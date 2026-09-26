@@ -5611,3 +5611,80 @@ Wrong fixes the tests catch:
 Ethereum's ERC-4626 states the same rule in its Security Considerations, and requires its plain price quotes `convertToShares` / `convertToAssets` to round down.
 
 The rule protects the vault, not the next depositor. `a_deposit_worth_less_than_one_share_is_refused` shows the first-depositor (inflation) attack: one share plus a direct donation makes a 1_000-asset deposit round down to 0 shares. That is why `deposit` refuses a zero-share result. Production vaults also add virtual shares and assets (OpenZeppelin's `_decimalsOffset`) or seed the vault. The `mul_div` here is part 1's solution."""
+
+[[exercises]]
+name = "checkedmath3"
+dir = "66_checked_math"
+hint = """
+Every test panics with "not yet implemented": the four bodies are `todo!()`. Clippy's `todo` lint, set to forbid in this course, also rejects any `todo!()` you leave behind.
+
+Multiply and divide through part 1's full-width `mul_div_floor`. Check for a zero divisor first, because `mul_div_floor` returns `None` for it, just as for an overflow:
+```
+fn checked_mul(self, rhs: Decimal) -> Result<Decimal, DecimalError> {
+    mul_div_floor(self.0, rhs.0, SCALE).map(Decimal).ok_or(DecimalError::Overflow)
+}
+
+fn checked_div(self, rhs: Decimal) -> Result<Decimal, DecimalError> {
+    if rhs == Decimal::ZERO {
+        return Err(DecimalError::DivisionByZero);
+    }
+    mul_div_floor(self.0, SCALE, rhs.0).map(Decimal).ok_or(DecimalError::Overflow)
+}
+```
+To parse, validate the text first. Then fold the digits with checked arithmetic, padding the fraction to 18 digits:
+```
+fn from_str(s: &str) -> Result<Self, Self::Err> {
+    if s.is_empty() {
+        return Err(DecimalError::Empty);
+    }
+    let (int, frac) = match s.split_once('.') {
+        Some((int, frac)) => (int, Some(frac)),
+        None => (s, None),
+    };
+    let is_number = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    if !is_number(int) || frac.is_some_and(|frac| !is_number(frac)) {
+        return Err(DecimalError::Invalid);
+    }
+    let frac = frac.unwrap_or("");
+    if frac.len() > DECIMALS {
+        return Err(DecimalError::TooManyDecimals);
+    }
+    fn value(mut digits: impl Iterator<Item = u8>) -> Option<u128> {
+        digits.try_fold(0u128, |acc, b| acc.checked_mul(10)?.checked_add(u128::from(b - b'0')))
+    }
+    let int = value(int.bytes())
+        .and_then(|int| int.checked_mul(SCALE))
+        .ok_or(DecimalError::Overflow)?;
+    let padded = frac.bytes().chain(std::iter::repeat(b'0')).take(DECIMALS);
+    let frac = value(padded).expect("18 digits always fit in a u128");
+    int.checked_add(frac).map(Decimal).ok_or(DecimalError::Overflow)
+}
+```
+To print, strip the fraction's trailing zeros, and let a zero-padded width restore its leading zeros:
+```
+fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let (int, frac) = (self.0 / SCALE, self.0 % SCALE);
+    if frac == 0 {
+        return write!(f, "{int}");
+    }
+    let (mut frac, mut width) = (frac, DECIMALS);
+    while frac.is_multiple_of(10) {
+        frac /= 10;
+        width -= 1;
+    }
+    write!(f, "{int}.{frac:0width$}")
+}
+```
+Correct alternatives:
+- For `Display`: `format!("{int}.{frac:018}")`, then trim the trailing `'0'`s, then a trailing `'.'`.
+- For parsing: `u128::from_str` on parts you have ALREADY validated, mapping `IntErrorKind::PosOverflow` to `Overflow`.
+
+Traps the tests catch:
+- `f64` anywhere: the round trips fail, and "1e3" must be rejected.
+- `u128::from_str` on unvalidated parts: it accepts "+1" and "1.+5".
+- Mapping `PosOverflow` to `Invalid`.
+- Checking the length instead of doing checked math: 60 leading zeros are fine.
+- `char::is_numeric`: it is true for Arabic-Indic digits and for fractions like 1/2.
+- A plain `a * b / SCALE`, which overflows for `Decimal::MAX * 1`, and the split `a / SCALE * b + a % SCALE * b / SCALE`, which overflows for `0.5 * 3e20`. Both refuse results that fit.
+
+For `FromStr` itself, see `23_conversions/conversions3`."""
