@@ -348,6 +348,8 @@ bin = [
   { name = "linkedlist4_sol", path = "../solutions/27_data_structures/linkedlist4.rs" },
   { name = "arena1", path = "../exercises/59_arena/arena1.rs" },
   { name = "arena1_sol", path = "../solutions/59_arena/arena1.rs" },
+  { name = "arena2", path = "../exercises/59_arena/arena2.rs" },
+  { name = "arena2_sol", path = "../solutions/59_arena/arena2.rs" },
   { name = "futures1", path = "../exercises/28_futures/futures1.rs" },
   { name = "futures1_sol", path = "../solutions/28_futures/futures1.rs" },
   { name = "futures2", path = "../exercises/28_futures/futures2.rs" },

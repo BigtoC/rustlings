@@ -3936,6 +3936,43 @@ fn lca(&self, a: NodeId, b: NodeId) -> NodeId {
 ```
 That is O(depth) time and space. The O(1)-extra-space answer interviewers like: count both depths (the number of parent hops), move the deeper node up until the depths match, then move both up in lockstep until they meet. Moving both up in lockstep WITHOUT equalizing the depths first fails the uneven-depth tests. A `HashSet` of `a`'s ancestors, then climbing from `b` until you hit one, is also O(depth). Calling `path_a.contains(..)` for every ancestor of `b` is O(depth^2). Rewriting the nodes as `Rc<RefCell<..>>` stops `a_tree_of_strings_can_move_to_another_thread` from compiling: E0277 "`Rc<..>` cannot be sent between threads safely". Related: `26_smart_pointers_deep/smartptr2` (the `Rc` / `Weak` version) and `37_borrowck_errors/borrowck1` (two `&mut` into one `Vec`)."""
 
+[[exercises]]
+name = "arena2"
+dir = "59_arena"
+hint = """
+All three bodies are empty, so each one fails with E0308 "mismatched types" (expected `Option<&T>`, `Option<&mut T>` or `Option<T>`, found `()`).
+
+get and get_mut: `slots.get(..)?` turns an out-of-range index into `None`, and a match guard compares the generation:
+```
+fn get(&self, id: Id) -> Option<&T> {
+    match self.slots.get(id.index)? {
+        Slot::Occupied { generation, value } if *generation == id.generation => Some(value),
+        _ => None,
+    }
+}
+```
+`get_mut` is the same with `self.slots.get_mut(id.index)?`. Indexing with `self.slots[id.index]` panics on an out-of-range id, and ignoring the generation fails `a_stale_id_does_not_reach_the_slots_next_value`.
+
+remove: validate first, then swap the WHOLE slot for a vacant one with `mem::replace` and take the value out of the old slot, which you now own. Moving it out in place (`let Slot::Occupied { value, .. } = self.slots[id.index]`) is E0507 "cannot move out of index of `Vec<Slot<T>>`" (see `24_ownership_model/ownership4` and `ownership5`). rustc's suggestions do not help here. Borrowing (`ref value`, `&self.slots[..]`) gives a `&T`, not the `T` you must return, and cloning would need `T: Clone`, which the tests' `Token` values are not. Add `use std::mem;` and:
+```
+fn remove(&mut self, id: Id) -> Option<T> {
+    self.get(id)?;
+    let next = id.generation.checked_add(1);
+    let vacant = Slot::Vacant {
+        generation: next.unwrap_or(id.generation),
+    };
+    let Slot::Occupied { value, .. } = mem::replace(&mut self.slots[id.index], vacant) else {
+        unreachable!("`get` just found this slot occupied");
+    };
+    if next.is_some() {
+        self.free.push(id.index);
+    }
+    self.len -= 1;
+    Some(value)
+}
+```
+`self.get(id)?;` returns early for every id that `get` rejects, before anything changes. A `remove` that pushes the index onto `free` without that check frees a slot twice, and the given `insert` then panics with "is on the free list but occupied". `checked_add` is `None` only at `u32::MAX`: that slot is retired (vacant, never on `free` again). Plain `generation + 1` panics with "attempt to add with overflow" in `a_slot_out_of_generations_is_retired`. `wrapping_add` would hand slot 0 out again with generation 0 (reviving its oldest ids), and `saturating_add` would revive the removed id itself. Not bumping the generation at all lets the stale id reach the next value. `Vec::remove` and `swap_remove` shift or move other values and break their ids. A let chain works as well: `if let Some(slot) = self.slots.get_mut(id.index) && let Slot::Occupied { generation, .. } = *slot && generation == id.generation { .. } else { None }`. Related: `36_atomics/atomics5` fixes the same ABA problem with a version tag."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
