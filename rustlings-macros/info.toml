@@ -4549,6 +4549,38 @@ Wrong turns:
 
 In real async code, if the tasks only need to run concurrently and not in parallel, skip spawning and `join` borrowing futures inside the current task (`57_async_combinators/join1`). There is no safe scoped async spawn, because a scope future could be `mem::forget`-ed while its tasks still run."""
 
+[[exercises]]
+name = "async_send3"
+dir = "56_async_bounds"
+hint = """
+"future cannot be sent between threads safely ... the trait `Send` is not implemented for `impl std::future::Future<Output = Option<String>>`": in a trait, `async fn get` means `fn get(..) -> impl Future<Output = Option<String>>` with no auto-trait bounds. So for a generic `S`, rustc cannot assume the future is `Send`. For a concrete store it can look through the opaque type, which is why spawning a concrete store's `get` would compile. `S: Send + Sync` is about the store, not about its futures. Write the desugared signature in the trait and add the bound (rustc's own help prints it). The impls may keep `async fn`:
+```
+trait Store {
+    fn get(&self, key: &str) -> impl Future<Output = Option<String>> + Send;
+}
+```
+Now every impl must keep that promise, and `CachedStore` breaks it: "has type `std::sync::MutexGuard<'_, HashMap<String, String>>` which is not `Send` ... required by a bound in `Store::get::{anon_assoc#0}`". It holds the cache lock for the whole remote round trip. Lock only around the lookup and the insert:
+```
+async fn get(&self, key: &str) -> Option<String> {
+    let hit = self.cache.lock().unwrap().get(key).cloned();
+    if hit.is_some() {
+        return hit;
+    }
+    let value = self.remote.get(key).await?;
+    self.cache.lock().unwrap().insert(key.to_string(), value.clone());
+    Some(value)
+}
+```
+`if let Some(hit) = self.cache.lock().unwrap().get(key) { return Some(hit.clone()); }` also works, because the temporary guard dies at the end of the `if let`, before the `.await`. A `drop(cache)` before the `.await` does not work, because `cache.get(key)` borrowed it (see `async_send1`). Two tasks that miss at the same time may both fetch, which is fine for a read-through cache.
+
+What does not work:
+- `trait Store: Send + Sync` bounds the store, not the future.
+- Return type notation, `where S::get(..): Send`, is unstable (E0658).
+- Boxing the future in the trait breaks the `async fn` impls, including the tests' `Recorder` (E0053).
+- Rewriting `spawn_fetch` to build the future on the new thread (`thread::spawn(move || block_on(store.get(&key)))`) does not help, because the tests' generic `assert_get_is_send` still needs the trait's promise.
+
+The price of the bound: an `async fn` impl on a type that holds an `Rc` or a `RefCell` no longer compiles, because its future always holds `&self`, and `&Self` is `Send` only if `Self: Sync`. A `where Self: Sync` clause on the method is a valid variant. The `trait-variant` crate generates a local and a `Send` flavor when you need both."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
