@@ -3548,6 +3548,71 @@ sends, recording a failed mail, a script that never clears, a `take_sent` that c
 instead of emptying, and state shared by all doubles (a `static` or a `thread_local!`)
 all fail."""
 
+[[exercises]]
+name = "seams2"
+dir = "50_testing_seams"
+hint = """
+Two stages. First E0277 in the tests: "`Rc<Cell<std::time::Duration>>` cannot be sent
+between threads safely" and "... cannot be shared between threads safely" (the fake
+clock), and "`RefCell<HashMap<String, TokenBucket<FakeClock>>>` cannot be shared between
+threads safely" (the limiter). A scoped thread may use `&limiter` only if
+`KeyedLimiter<FakeClock>: Sync`, which needs every field to be `Sync`, and `Rc`, `Cell`
+and `RefCell` are single-threaded. Swap each for its thread-safe twin:
+```
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone)]
+struct FakeClock {
+    now: Arc<Mutex<Duration>>,
+}
+// new:     FakeClock { now: Arc::new(Mutex::new(Duration::ZERO)) }
+// advance: *self.now.lock().unwrap() += by;
+// set:     *self.now.lock().unwrap() = to;
+// now():   *self.now.lock().unwrap()
+
+// in KeyedLimiter:
+//     buckets: Mutex<HashMap<String, TokenBucket<C>>>,
+//     buckets: Mutex::new(HashMap::new()),
+//     let mut buckets = self.buckets.lock().unwrap();
+```
+A `Mutex<T>` is `Send + Sync` whenever `T: Send`. An `Arc<AtomicU64>` of nanoseconds
+works for the clock without a lock, and an `RwLock` works for the map if you take
+`write()` (or keep a `Mutex` per bucket inside it). Keep ONE guard across the lookup, the
+refill and the decrement: peeking under one lock and taking under a second lets several
+threads take the same token.
+
+Then the tests run and Part A fails. `polling_faster_than_the_refill_rate_still_gets_tokens`
+gets `[]` because `last = now` throws away the leftover fraction on every call, and
+`an_idle_hour_refills_to_capacity_and_no_further` gets 3600 because nothing clamps. Clamp,
+and move `last` only by the credited time, except when the bucket is full:
+```
+self.tokens = self.tokens.saturating_add(added).min(self.capacity);
+if self.tokens == self.capacity {
+    // Full: the leftover has nowhere to go; the next interval starts now.
+    self.last = self.last.max(now);
+} else {
+    // Not full, so `added` did not saturate; the leftover stays banked.
+    self.last += self.refill_every * added;
+}
+```
+Why each piece. Clamping and always doing `self.last += self.refill_every * added` keeps
+the remainder, but the bucket then banks up to one interval while it sits full
+(`a_full_bucket_does_not_bank_idle_time`, and the extra half second in
+`an_idle_hour_refills_to_capacity_and_no_further`), and after more than `u32::MAX`
+intervals `added` saturates, `last` stays far behind and every call refills again
+(`a_very_long_idle_period_does_not_overflow`). Restarting the interval when full fixes
+both; it is the `min(capacity, ..)` of the textbook definition. Do it on EVERY call that
+finds the bucket full, also when `added` is 0: skipping it when nothing was added (or
+returning early on `added == 0`) banks the part of an interval the bucket spent full
+(`a_full_bucket_does_not_bank_part_of_an_interval_either`). `max` matters when the clock
+reads earlier than `last`: a plain `self.last = now` moves `last` back, and the same
+stretch of time is credited again when the clock returns
+(`a_jittery_clock_cannot_mint_tokens`). `saturating_sub` already makes a backwards reading
+count as zero elapsed time. Equivalent: return early when `now <= self.last`, then
+compare the whole intervals with the room left (`capacity - tokens`) in `u128`: if they
+fill it, set `tokens = capacity` and `last = now`, otherwise add them and advance `last`
+by exactly that many intervals."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
