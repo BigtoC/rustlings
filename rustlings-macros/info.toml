@@ -3193,6 +3193,50 @@ impl Admin {
 ```
 Delegating to `self.user.greet()` keeps the user's rule (nickname first) in one place. Rebuilding the text from `self.user.name` fails `an_admin_greets_the_way_its_user_does`, and forwarding to `self.user.greet()` alone drops the level. Callers that need the account now ask for it explicitly: `mailing_label(admin.user())`. Keeping the `Deref` next to the new impl fails `an_admin_is_not_a_smart_pointer_to_a_user`, and so does a blanket `impl<T: Deref<Target = User>> Greet for T` (which also greets without the level). When many methods need forwarding, write them out (or use a delegation macro). To share behavior between types, use a trait with default methods (`15_traits`) and generics or `dyn` (`32_dispatch`)."""
 
+[[exercises]]
+name = "borrow1"
+dir = "45_sized_deref"
+hint = """
+Part A: E0308 "expected `&String`, found `&str`". With `key: &K`, only an owned key fits. Copy the bounds of `HashMap::get`, so that the query can be any type the stored key borrows as:
+```
+use std::borrow::Borrow;
+
+fn lookup<'m, K, V, Q>(map: &'m HashMap<K, V>, key: &Q) -> Option<&'m V>
+where
+    K: Hash + Eq + Borrow<Q>,
+    Q: Hash + Eq + ?Sized,
+{
+    map.get(key)
+}
+```
+`?Sized` is required: without it `Q` cannot be `str`, `[u8]` or `Path` (E0277 "the size for values of type `str` cannot be known at compilation time"). Put `'m` on the map only. Tying the key to `'m` as well gives E0597 in the test that drops the key first. `map.get_key_value(key).map(|(_, v)| v)` works too. These fail `lookup_is_a_hash_lookup_not_a_scan`: a scan such as `map.iter().find(|(k, _)| (*k).borrow() == key)` (it never hashes the query), and `contains_key` followed by `get` (it hashes twice). `Q: ToOwned<Owned = K>` plus `map.get(&key.to_owned())` allocates on every call and cannot work for `UserId` (E0271). `K: AsRef<Q>` does not work either: `map.get` needs `Borrow`, `AsRef` has no reflexive impl (E0277 "the trait bound `String: AsRef<String>` is not satisfied"), and `UserId` has no `AsRef` at all.
+The `UserId` lookups still fail after that, with E0308 "expected `&UserId`, found `&str`". The reflexive `Borrow<UserId>` is the only impl, so rustc infers `Q = UserId`. Add the impl. It is sound, because the derived `Hash` and `Eq` of a one-field newtype agree with `str`'s:
+```
+impl Borrow<str> for UserId {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+```
+std's `contains_key`, `remove` and `map["bob"]` use the same bound, so they start working too. A case-insensitive key must never do this (its equal keys have different hashes); give it `AsRef<str>` instead.
+Part B: E0277 "the trait bound `Rc<String>: Borrow<str>` is not satisfied". `Borrow` does not chain, and `Rc<String>` only borrows as `String`. Store `Rc<str>`, which borrows as `str`:
+```
+#[derive(Default)]
+struct Interner {
+    set: HashSet<Rc<str>>,
+}
+
+fn intern(&mut self, s: &str) -> Rc<str> {
+    if let Some(existing) = self.set.get(s) {
+        return Rc::clone(existing);
+    }
+    let fresh: Rc<str> = Rc::from(s);
+    self.set.insert(Rc::clone(&fresh));
+    fresh
+}
+```
+`Rc::from(s)` makes one allocation that holds both counts and the bytes; `Rc::new(String)` needs two. The set itself now answers `contains("hello")` as well. Searching with `get(&Rc::from(s))`, or scanning with `iter().find(..)`, also passes the tests, but it allocates or scans on every lookup, which is exactly what `Borrow` exists to avoid. (`get(&s.to_string())` does not even compile: `Rc<str>` is not `Borrow<String>`.) Turning an `Rc<String>` into a fresh `Rc<str>` on each call breaks the `Rc::ptr_eq` tests. `60_lru_cache/lru3` applies the same signature to a cache."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]

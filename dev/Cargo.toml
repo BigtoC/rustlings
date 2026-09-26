@@ -320,6 +320,8 @@ bin = [
   { name = "deref1_sol", path = "../solutions/45_sized_deref/deref1.rs" },
   { name = "deref2", path = "../exercises/45_sized_deref/deref2.rs" },
   { name = "deref2_sol", path = "../solutions/45_sized_deref/deref2.rs" },
+  { name = "borrow1", path = "../exercises/45_sized_deref/borrow1.rs" },
+  { name = "borrow1_sol", path = "../solutions/45_sized_deref/borrow1.rs" },
   { name = "linkedlist1", path = "../exercises/27_data_structures/linkedlist1.rs" },
   { name = "linkedlist1_sol", path = "../solutions/27_data_structures/linkedlist1.rs" },
   { name = "ringbuffer1", path = "../exercises/27_data_structures/ringbuffer1.rs" },
