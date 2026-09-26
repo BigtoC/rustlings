@@ -2064,6 +2064,35 @@ fn set_text(&mut self, text: String) {
 ```
 (`self.word_count = OnceCell::new();` works too.) Recomputing eagerly here fails `set_text_computes_nothing_by_itself`: staying lazy is the point of the cache. Why not `LazyCell`? Its initializer is fixed when the struct is built, so it cannot borrow the struct's own `text`."""
 
+[[exercises]]
+name = "cell3"
+dir = "40_interior_mutability"
+hint = """
+Part A — `GREETING`: E0277 "`OnceCell<String>` cannot be shared between threads safely". Every thread can reach a static, so its type must be `Sync`, and `OnceCell` is not: two threads could find it empty and fill it at the same time. `OnceLock` is the same API with the synchronization built in:
+```
+use std::sync::OnceLock;
+
+static GREETING: OnceLock<String> = OnceLock::new();
+```
+`init_greeting` and `greeting` compile unchanged: `set` still hands the value back as `Err(value)` when the cell is full, and `get` still returns `Option<&String>`, now borrowed for `'static`. `static mut` needs `unsafe` for every access (E0133), `thread_local!` would give each thread its own greeting (the test reads it from a second thread), and a `Mutex<Option<String>>` compiles as a static but cannot lend out a `&'static str` without leaking: every read goes through a guard.
+
+Part B — `CONFIG`: E0015 "cannot call non-const function `load` in statics". A static's initializer runs at compile time, and `load` allocates and parses at run time. `LazyLock` runs it on the first dereference, exactly once, and makes racing threads wait for the winner:
+```
+use std::sync::LazyLock;
+
+static CONFIG: LazyLock<Config> = LazyLock::new(load);
+```
+`LazyLock::new` itself is `const`: it only stores the function. `CONFIG.workers` and `&CONFIG` as a `&'static Config` work through `Deref`. If the tests now fail with E0716 "temporary value dropped while borrowed" at `&CONFIG`, you wrote `const` instead of `static`: every use of a `const` is a fresh temporary, and that `LazyLock` would load the config again each time (clippy: `declare_interior_mutable_const`).
+
+Part C — `PORTS`: the same E0015, for `HashMap::from`. Wrap the same expression:
+```
+static PORTS: LazyLock<HashMap<&str, u16>> =
+    LazyLock::new(|| HashMap::from([("http", 80), ("https", 443), ("ssh", 22)]));
+```
+A non-capturing closure coerces to the `fn() -> T` that `LazyLock<T>` stores by default. Remove the now-unused `use std::cell::OnceCell;`.
+
+Which one when? `OnceLock` when the value comes from outside the static (set by `main` from a flag or a file), `LazyLock` when the static knows how to build its own value. A `fn config() -> &'static Config` over a `OnceLock::get_or_init` is the pre-1.80 spelling of the same idea, but the tests use `CONFIG` and `PORTS` directly. A global that keeps changing after startup needs a lock instead (`Mutex::new` is `const`). Compare with `Box::leak` in the "Leaking on Purpose" section of `25_lifetimes_deep`."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
