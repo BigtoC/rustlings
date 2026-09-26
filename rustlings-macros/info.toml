@@ -4404,6 +4404,54 @@ The first poll registers once and returns `Pending`, which gives the thread stra
 - one thread per sleep (`thread::spawn` plus `thread::sleep`): it works, but costs a thread per timer, and the tests require the shared timer. That is the async book's `TimerFuture`.
 Real runtimes keep all deadlines in one structure (tokio uses a hierarchical timing wheel) and remove the entry when a `Sleep` is dropped. For blocking work you cannot avoid, use `tokio::task::spawn_blocking`. oneshot1 has the same waker rules, and yield1 shows the CPU-bound version of this starvation."""
 
+[[exercises]]
+name = "yield1"
+dir = "58_leaf_futures"
+hint = """
+This compiles, but `two_yielding_tasks_interleave` fails with `left: ["a0", "a1", "a2", "b0", "b1", "b2"]`, and `yield_now_is_pending_once_then_ready` gets `Ready(())` from the first poll. `.await` suspends a task only when the awaited future returns `Pending`, and `async fn yield_now() {}` awaits nothing, so it is `Ready` at once. Write the leaf yourself (it is `YieldOnce` from futures2). It must wake its own task before returning `Pending`, because no channel or timer holds its waker:
+```
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+struct YieldNow {
+    yielded: bool,
+}
+
+impl Future for YieldNow {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if self.yielded {
+            return Poll::Ready(());
+        }
+        self.yielded = true;
+        cx.waker().wake_by_ref();
+        Poll::Pending
+    }
+}
+
+fn yield_now() -> YieldNow {
+    YieldNow { yielded: false }
+}
+```
+Then `a_cpu_loop_that_yields_lets_a_heartbeat_tick` still fails with "ticked 0 time(s) while the checksum ran", because `checksum` never calls it. Yield before each new batch of `every` items (and delete `let _ = every;`):
+```
+for (i, x) in data.into_iter().enumerate() {
+    if i > 0 && i % every == 0 {
+        yield_now().await;
+    }
+    sum = sum.wrapping_add(x);
+    progress.store(i + 1, Ordering::Relaxed);
+}
+```
+Yielding after each batch (`(i + 1) % every == 0`), a countdown budget, or `chunks(every)` works just as well. `std::future::poll_fn` with a captured `bool` is another way to write the leaf (it is how tokio writes its own). These do NOT fix it:
+- `std::thread::yield_now()`: it yields the OS thread, and all the tasks share that thread;
+- `Pending` without a wake: the task is never polled again, and the test executor panics with "stuck";
+- `wake_by_ref` plus `Pending` on every poll: the task never finishes, and the poll budget panics;
+- `Pending` twice per yield, or two wakes per yield: the first test expects `Ready` on the second poll and exactly one wake;
+- yielding on every item, or every `every / 2` items: it works but wastes round trips through the executor, and the heartbeat test rejects it; every `2 * every` items is too rare.
+In tokio, use `tokio::task::yield_now`, which defers its wake-up until the runtime has polled its I/O and timer driver, or move heavy work to `spawn_blocking` or rayon. timer1 is the blocking (`thread::sleep`) version of this starvation."""
+
 # MODULE 4 · SEND / SYNC — the basis of fearless concurrency
 
 [[exercises]]

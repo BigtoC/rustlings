@@ -382,6 +382,8 @@ bin = [
   { name = "oneshot1_sol", path = "../solutions/58_leaf_futures/oneshot1.rs" },
   { name = "timer1", path = "../exercises/58_leaf_futures/timer1.rs" },
   { name = "timer1_sol", path = "../solutions/58_leaf_futures/timer1.rs" },
+  { name = "yield1", path = "../exercises/58_leaf_futures/yield1.rs" },
+  { name = "yield1_sol", path = "../solutions/58_leaf_futures/yield1.rs" },
   { name = "send_sync1", path = "../exercises/30_send_sync/send_sync1.rs" },
   { name = "send_sync1_sol", path = "../solutions/30_send_sync/send_sync1.rs" },
   { name = "send_sync2", path = "../exercises/30_send_sync/send_sync2.rs" },
