@@ -3485,6 +3485,37 @@ impl<T: Mailer + ?Sized> Mailer for &T {
 ```
 `&T` is enough because `send` takes `&self`. A trait with `&mut self` methods is forwarded through `&mut T` instead, as std does for `Iterator`, `io::Read` and `io::Write`. A blanket `impl<P: Deref> Shape for P where P::Target: Shape` also passes the tests, but it is `deref2`'s Deref-as-inheritance again, and it claims every `Deref` type: a local type that derefs to a shape could never have its own `Shape` impl (E0119). std writes one impl per pointer type."""
 
+[[exercises]]
+name = "sized3"
+dir = "45_sized_deref"
+hint = """
+E0277 "the size for values of type `[u8]` cannot be known at compilation time", "required by an implicit `Sized` bound in `Packet`": a struct's type parameter is `Sized` by default. Declare `T: ?Sized`, and the next error is E0277 for `T`, with the note "only the last field of a struct may have a dynamically sized type". The id's offset must be known without reading the payload's length, so move `payload` to the end:
+```
+struct Packet<T: ?Sized> {
+    id: u32,
+    payload: T,
+}
+```
+E0599 "the method `id` exists ... but its trait bounds were not satisfied" comes from the impl block's own implicit bound. Add `?Sized` there, and `new` fails with E0277: it takes and returns a `T` by value, and that needs a size. Split the impl:
+```
+impl<T> Packet<T> {
+    fn new(id: u32, payload: T) -> Self {
+        Packet { payload, id }
+    }
+}
+
+impl<T: ?Sized> Packet<T> {
+    fn id(&self) -> u32 {
+        self.id
+    }
+
+    fn payload(&self) -> &T {
+        &self.payload
+    }
+}
+```
+Or keep one `impl<T: ?Sized>` and give `new` a `where T: Sized` clause. Concrete blocks such as `impl Packet<[u8]>` and `impl Packet<dyn Display>` miss the `[u16]` and `dyn Debug` packets in the tests; one generic impl covers every payload. The E0308 errors are gone by now: `Box<Packet<[u8; 4]>>` unsizes to `Box<Packet<[u8]>>`, and `&Packet<f64>` to `&Packet<dyn Display>`, because the last field is the only one whose type involves `T`. The value doesn't move. The pointer gains a length (or a vtable pointer), which is why `&Packet<[u8]>` is two words and `size_of_val` can compute the size: 4 + len bytes, rounded up to a multiple of 4. rustc's other suggestions for the field-order error don't fit. Dropping the `?Sized` brings back the first error, and making the field a `&T` or `Box<T>` gives a sized struct that points somewhere else, so the coercions fail with E0308 and the size checks cannot hold."""
+
 # TRAITS & ABSTRACTION · Builders and Typestate: From Run-Time Checks to Compile-Time Guarantees
 
 [[exercises]]
