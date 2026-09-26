@@ -4948,6 +4948,126 @@ fn remove(&mut self, key: i32) -> bool {
 ```
 What fails: copying the successor's key into the removed node (the address checks: the successor's key must stay in its own node), picking the predecessor or hanging the left subtree under the successor instead of moving the successor up (the shape checks), moving a successor or predecessor up when the node has only one child (the one-child test: the child's whole subtree moves up), `unwrap` on a missing key, a forgotten `self.len -= 1`, and recursion anywhere (the 200_000-deep test aborts with "has overflowed its stack"). On nightly, the original Polonius (`-Zpolonius`) accepts the starter's `find_slot`; `-Zpolonius=next` still rejects the loop."""
 
+# MODULE 2 · Graphs: BFS, Iterative DFS, Topological Order, Union-Find, Grids
+
+[[exercises]]
+name = "graph1"
+dir = "62_graphs"
+hint = """
+All five bodies are empty, so each one fails with E0308 "mismatched types" (expected `Vec<Option<usize>>`, `Option<Vec<usize>>`, `Result<Vec<usize>, CycleError>`, `usize` or `bool`, found `()`). Add `use std::cmp::Reverse;` and `use std::collections::{BinaryHeap, VecDeque};`.
+
+bfs: a `VecDeque` of `(node, distance)`. A node gets its distance when it is QUEUED, so `dist` doubles as the visited set and nothing is queued twice:
+```
+fn bfs(adj: &[Vec<usize>], src: usize) -> Vec<Option<usize>> {
+    let mut dist = vec![None; adj.len()];
+    dist[src] = Some(0);
+    let mut queue = VecDeque::from([(src, 0)]);
+    while let Some((u, d)) = queue.pop_front() {
+        for &v in &adj[u] {
+            if dist[v].is_none() {
+                dist[v] = Some(d + 1);
+                queue.push_back((v, d + 1));
+            }
+        }
+    }
+    dist
+}
+```
+A depth-first walk (recursive, or with a `Vec` as a stack) fails `bfs_counts_the_fewest_edges_not_the_first_route_found`: it reaches node 4 the long way first. `Vec::remove(0)` as the queue costs O(n) per pop.
+
+shortest_path: the same BFS with a parent array, then a loop back from `dst` and one `reverse`:
+```
+fn shortest_path(adj: &[Vec<usize>], src: usize, dst: usize) -> Option<Vec<usize>> {
+    let mut seen = vec![false; adj.len()];
+    let mut parent = vec![None; adj.len()];
+    seen[src] = true;
+    let mut queue = VecDeque::from([src]);
+    while let Some(u) = queue.pop_front() {
+        if u == dst {
+            break;
+        }
+        for &v in &adj[u] {
+            if !seen[v] {
+                seen[v] = true;
+                parent[v] = Some(u);
+                queue.push_back(v);
+            }
+        }
+    }
+    if !seen[dst] {
+        return None;
+    }
+    let mut path: Vec<usize> = std::iter::successors(Some(dst), |&v| parent[v]).collect();
+    path.reverse();
+    Some(path)
+}
+```
+`src` never gets a parent, so the walk stops there. Building the path recursively aborts the test binary with "has overflowed its stack" on the 100_000-node path. `insert(0, ..)` in the loop is O(n^2). Forgetting the `reverse` returns `[dst, .., src]`.
+
+topo_order: count the in-degrees, then always take the smallest ready node from a min-heap:
+```
+fn topo_order(n: usize, edges: &[(usize, usize)]) -> Result<Vec<usize>, CycleError> {
+    let mut targets = vec![Vec::new(); n];
+    let mut in_degree = vec![0_usize; n];
+    for &(u, v) in edges {
+        targets[u].push(v);
+        in_degree[v] += 1;
+    }
+    let mut ready: BinaryHeap<Reverse<usize>> =
+        (0..n).filter(|&u| in_degree[u] == 0).map(Reverse).collect();
+    let mut order = Vec::with_capacity(n);
+    while let Some(Reverse(u)) = ready.pop() {
+        order.push(u);
+        for &v in &targets[u] {
+            in_degree[v] -= 1;
+            if in_degree[v] == 0 {
+                ready.push(Reverse(v));
+            }
+        }
+    }
+    match n - order.len() {
+        0 => Ok(order),
+        unordered => Err(CycleError { unordered }),
+    }
+}
+```
+A FIFO `VecDeque` gives a valid order but not the smallest one ([4, 5, 2, 0, 3, 1] instead of [4, 5, 0, 2, 3, 1]). A `BinaryHeap<usize>` without `Reverse` gives the largest-first order. A `BTreeSet` with `pop_first` works too. A node on a cycle, or behind one, never reaches in-degree 0, so `n - order.len()` is the unordered count.
+
+find: two loops, one up to the root and one that repoints the same path. rustc suggests returning the local binding `x`; that compiles, but `x` is the answer only when it is a root already:
+```
+fn find(&mut self, x: usize) -> usize {
+    let mut root = x;
+    while self.parent[root] != root {
+        root = self.parent[root];
+    }
+    let mut node = x;
+    while node != root {
+        let next = self.parent[node];
+        self.parent[node] = root;
+        node = next;
+    }
+    root
+}
+```
+The recursive version (`let root = self.find(p); self.parent[x] = root;`) overflows the stack on the 200_000-node chain. Path halving (`self.parent[x] = self.parent[self.parent[x]]`) has the same amortized bound but only shortens the path, so `find_compresses_the_whole_path_in_one_call` fails. So does a `find` that compresses nothing.
+
+union: compare the sizes of the two ROOTS and hang the smaller under the bigger:
+```
+fn union(&mut self, a: usize, b: usize) -> bool {
+    let (mut big, mut small) = (self.find(a), self.find(b));
+    if big == small {
+        return false;
+    }
+    if self.size[big] < self.size[small] {
+        std::mem::swap(&mut big, &mut small);
+    }
+    self.parent[small] = big;
+    self.size[big] += self.size[small];
+    true
+}
+```
+Always hanging `a`'s root under `b`'s (or the reverse) builds a 4_095-deep chain in `unions_in_a_line_keep_every_tree_shallow`, in one of the two argument orders. Taking `self.parent[a]` as the root instead of calling `find` fails `union_reports_whether_it_merged`: once two sets of 2 merge, a node sits two links below its root, and `union` merges a set with itself. Comparing `self.size[a]` with `self.size[b]` reads the out-of-date sizes of non-roots and fails a union-by-size test. Returning `true` for two nodes of one set breaks the given Kruskal: `mst_weight` then counts a self-loop as a merge and reports a disconnected graph as connected. Union by rank is fine in general, but this `Dsu` keeps sizes, and `set_size` reads them. Related: `59_arena` (index links), `44_trait_contracts/contracts3` (`Reverse` and a min-heap in Dijkstra's algorithm), and `graph2` for depth-first search."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
