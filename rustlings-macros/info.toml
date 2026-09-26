@@ -1894,6 +1894,47 @@ non-generic `Option<Box<dyn FnOnce() + 'a>>` would pass the tests too, but
 the TODO rules it out: it costs an allocation and a lifetime parameter. The
 `scopeguard` crate is the production version of this guard."""
 
+[[exercises]]
+name = "raii2"
+dir = "39_drop_raii"
+hint = """
+`dropping_without_commit_rolls_back` fails: nothing undoes an uncommitted
+transaction, so the store is `[1, 2]` instead of `[1]`. `Drop` is the one
+place that runs on every way out (end of scope, `return`, `?`, a panic that
+unwinds), so roll back there. And because `drop` also runs on the `Tx` that
+`commit` consumes, `commit` must leave it a note:
+```
+use std::mem;
+
+    // in `impl<'a> Tx<'a>`:
+    fn commit(mut self) {
+        self.committed = true;
+    }
+
+impl Drop for Tx<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            mem::swap(self.store, &mut self.snapshot);
+        }
+    }
+}
+```
+Assigning a field of an owned `self` is fine in a `Drop` type; only moving one
+out is E0509 (`24_ownership_model/ownership6`). `mem::swap` (or
+`*self.store = mem::take(&mut self.snapshot)`) moves the snapshot back without
+copying; `self.store.clone_from(&self.snapshot)` also passes but copies. These
+fail: `truncate(snapshot.len())` or popping the pushes (the cleared-rows test),
+rolling back unconditionally or leaving `commit` empty (the commit tests), and
+`commit(&mut self)` (the `tx` then stays alive until the end of the test and
+its `drop` still needs the `&mut store` borrow: E0502 / E0499 in the tests).
+Don't skip `drop` in `commit` with `mem::forget(self)` or
+`ManuallyDrop::new(self)` either: the tests cannot see it, but it leaks the
+snapshot (and clippy denies `mem::forget`). Keep `drop` panic-free: a panic in
+`drop` during unwinding aborts the process. An `Option<Vec<i32>>` snapshot
+that `commit` sets to `None` is an equivalent design without the flag.
+`rusqlite::Transaction` and `sqlx::Transaction` roll back on drop the same
+way."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
