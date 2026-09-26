@@ -5134,6 +5134,31 @@ fn has_cycle_directed(&self) -> bool {
 ```
 `frame` borrows `stack` mutably, but its last use is `frame.1 += 1`, so the `stack.push` after it compiles. These all fail: a visited set ("seen before means a cycle") fails the diamond; graying nodes when they are pushed fails `0 -> 1, 0 -> 2, 2 -> 1`; blackening a node as soon as its neighbors are pushed misses `0 -> 1 -> 2 -> 0`; starting only from node 0 misses a cycle elsewhere; a recursive three-color DFS overflows the stack on the 200_000-node tests. Searching from every node for a way back to itself is O(V * (V + E)), about 2 * 10^10 steps on the 200_000-node path. Two alternatives pass: a stack of `(node, exiting)` markers (gray on entry, black when the marker comes off), and Kahn's algorithm (graph1's `topo_order`: there is a cycle exactly when some node never reaches in-degree 0). In an undirected graph every edge would look like a cycle this way: skip the edge back to the parent, or use union-find. Related: `61_trees` (traversal with an explicit stack)."""
 
+[[exercises]]
+name = "grid1"
+dir = "62_graphs"
+hint = """
+The tests panic with "attempt to subtract with overflow": at row 0 (or column 0), `r - 1` is `0 - 1` on a `usize`, and tests run with overflow checks on. (In a release build the checks are off, `r - 1` wraps to `usize::MAX`, and the `< rows` check throws it out by accident.) Never compute a coordinate that may not exist. Add a signed offset with `checked_add_signed`, which returns `None` below 0 or past `usize::MAX`, and let `?` drop that direction inside `filter_map`:
+```
+fn neighbors(r: usize, c: usize, rows: usize, cols: usize) -> impl Iterator<Item = (usize, usize)> {
+    const DIRECTIONS: [(isize, isize); 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+    DIRECTIONS.into_iter().filter_map(move |(dr, dc)| {
+        let nr = r.checked_add_signed(dr)?;
+        let nc = c.checked_add_signed(dc)?;
+        (nr < rows && nc < cols).then_some((nr, nc))
+    })
+}
+```
+Add the four diagonal pairs to the table for 8 neighbors. `checked_sub` works too:
+```
+let up = r.checked_sub(1).map(|nr| (nr, c));
+let left = c.checked_sub(1).map(|nc| (r, nc));
+let down = (r + 1 < rows).then_some((r + 1, c));
+let right = (c + 1 < cols).then_some((r, c + 1));
+[up, down, left, right].into_iter().flatten()
+```
+So do `if r > 0` guards, and so does `r.wrapping_sub(1)` followed by the `< rows` check (the wrapped value, `usize::MAX`, fails it). `saturating_sub(1)` turns `(0, c)` into its own neighbor, which fails the corner, edge, 1x1 and brute-force tests. A detour through `i32` breaks past `i32::MAX` rows, and `r as isize - 1` overflows past `isize::MAX`: `coordinates_beyond_i32_and_isize_work` catches both. Related: `63_slices_strings/window1` (`len() - 1` on an empty slice) and `31_debugging/debugging2` (overflow checks in debug and release builds)."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
