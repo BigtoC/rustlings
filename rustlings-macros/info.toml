@@ -7472,3 +7472,60 @@ fn commit(&mut self) -> Result<(), TxError> {
 }
 ```
 `set` inserts `Some(value)` into the top layer (or into the base when no transaction is open). `delete` returns `false` if `get` finds nothing, and otherwise inserts `None` into the top layer (or removes the key from the base). `begin` pushes an empty layer, and `rollback` pops one."""
+
+[[exercises]]
+name = "set_kv_tx_part2"
+dir = "68_mock_interviews"
+hint = """
+This hint is the interviewer's rubric, then a sketch of a reference answer. Grade yourself against the rubric before you read the sketch. (Getting part 1 into this file: copy the fields, helper types and method bodies of your `Kv` from `set_kv_tx`, keep this file's tests, then add `count`. E0599 says "`Kv` is not an iterator" only because `Iterator::count` is the one `count` that rustc knows; do not implement `Iterator`.)
+
+RUBRIC
+- The question to answer first: which operations change what `get` sees? `set`, `delete` and `rollback` do. `begin` does not, and neither does `commit`: it only moves writes from one layer to another. Updating the counts in `commit` usually counts twice.
+- Design: a `HashMap<String, usize>` from each value to the number of keys that show it, kept in step with every change.
+  - `set`: find the key's visible value first; if there is one, take one away from it; then add one to the new value. (Setting the same value again is minus one, plus one.)
+  - `delete`: if the key is visible, take one away from its value.
+  - `rollback` with layers: pop the top layer; for each of its keys, take one away from the value that layer showed (unless it was a tombstone), and add one to the value the layers below show now (if any). O(keys written x depth).
+  - `rollback` with an undo log: for each logged key, take one away from the current value and add one to the logged value as you restore it. O(keys written).
+  - Another design: one map of +1/-1 deltas per transaction, and `count` = the base count plus every open transaction's delta. `count` becomes O(depth), `rollback` just drops the top deltas, and `commit` adds them into the parent's.
+  Remove a value whose count reaches 0, so the map does not keep every value ever seen.
+- Complexity, stated: `count` O(1) (O(depth) with deltas); `set` and `delete` as in part 1; `rollback` as above. Scanning the visible state is O(n) per call (and finding the visible state through the layers costs more). A count that walks only the keys the open transactions wrote is no better, because a transaction can write every key. Both fail `count_and_rollback_do_not_scan_the_store`, where a transaction rewrites all 40_000 keys: each `count` then takes over ten thousand times as long as one lookup in a plain `HashMap`, and the test's budget allows 64 times. So does recounting the whole store on every rollback.
+- Rust: in `set`, `self.get(key)` borrows all of `self`, so taking one away from `self.counts` while you hold the old value is E0502 "cannot borrow `self.counts` as mutable because it is also borrowed as immutable". `.map(str::to_owned)` on the old value compiles but allocates on every `set`. The structural fix is a free function over the two fields that `get` reads, `lookup(&self.base, &self.layers, key)`: it borrows only those fields, so `self.counts` stays free (a split borrow, `37_borrowck_errors/borrowck1`). And `counts.get_mut(value)` before `counts.insert(value.to_string(), 1)` allocates only for a value seen for the first time, where `counts.entry(value.to_string())` allocates on every call.
+- Follow-up questions to expect: large values (count by an interned id or an `Rc<str>` instead of a second copy of every distinct value); "how many keys have a value starting with p?" (a sorted `BTreeMap<String, usize>` and a range over it); and the honest one: did your part-1 design make this easy, or did you have to rework it?
+
+REFERENCE SKETCH
+```
+fn lookup<'a>(base: &'a HashMap<String, String>, layers: &'a [Layer], key: &str) -> Option<&'a str> {
+    for layer in layers.iter().rev() {
+        if let Some(entry) = layer.get(key) {
+            return entry.as_deref();
+        }
+    }
+    base.get(key).map(String::as_str)
+}
+
+fn set(&mut self, key: &str, value: &str) {
+    if let Some(old) = lookup(&self.base, &self.layers, key) {
+        uncount_one(&mut self.counts, old);
+    }
+    count_one(&mut self.counts, value);
+    // ...then part 1's write.
+}
+
+fn rollback(&mut self) -> Result<(), TxError> {
+    let top = self.layers.pop().ok_or(TxError::NoTransaction)?;
+    for (key, entry) in &top {
+        if let Some(value) = entry {
+            uncount_one(&mut self.counts, value);
+        }
+        if let Some(restored) = lookup(&self.base, &self.layers, key) {
+            count_one(&mut self.counts, restored);
+        }
+    }
+    Ok(())
+}
+
+fn count(&self, value: &str) -> usize {
+    self.counts.get(value).copied().unwrap_or(0)
+}
+```
+`count_one` adds one (inserting the value on first sight), and `uncount_one` takes one away and removes the value at 0. `delete` uncounts the visible value before it writes its tombstone. `get` becomes `lookup(&self.base, &self.layers, key)`, and `begin` and `commit` stay exactly as in part 1."""
