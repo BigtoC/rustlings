@@ -5688,3 +5688,81 @@ Traps the tests catch:
 - A plain `a * b / SCALE`, which overflows for `Decimal::MAX * 1`, and the split `a / SCALE * b + a % SCALE * b / SCALE`, which overflows for `0.5 * 3e20`. Both refuse results that fit.
 
 For `FromStr` itself, see `23_conversions/conversions3`."""
+
+[[exercises]]
+name = "checkedmath4"
+dir = "66_checked_math"
+hint = """
+There are four bugs.
+
+1. The golden-digest tests get a different number. `DefaultHasher` is not the documented FNV-1a, and its algorithm "should not be relied upon over releases". The `Hash` impls also choose the bytes for you: `str` adds a 0xff terminator, and `u128` writes native-endian bytes.
+2. `the_digest_sees_every_bit_of_a_balance` finds two ledgers with the same digest, because `balance as u64` drops the top 64 bits.
+3. The interest is wrong three ways:
+   - `interest_is_exact_on_small_balances` gets 128 instead of 129. In `f64`, 100 * 0.29 is 28.999999999999996.
+   - The 1e30 balance is off by about 1.8e10 units.
+   - `interest_that_would_overflow_changes_nothing` panics with "attempt to add with overflow".
+4. `export_refuses_to_truncate` gets `Ok`, with "whale" exported as 5.
+
+First, iterate in key order. Change the type and the `use` line to `std::collections::BTreeMap`, and drop the `std::hash` import once `DefaultHasher` is gone:
+```
+balances: BTreeMap<String, u128>,
+```
+Hash exactly the documented bytes:
+```
+fn state_digest(&self) -> u64 {
+    let mut fnv = Fnv1a::new();
+    for (name, balance) in &self.balances {
+        let len = u64::try_from(name.len()).expect("a name longer than u64::MAX bytes");
+        fnv.write(&len.to_le_bytes());
+        fnv.write(name.as_bytes());
+        fnv.write(&balance.to_le_bytes());
+    }
+    fnv.finish()
+}
+```
+Compute all the interest in integers first, and commit only when every new balance fits:
+```
+fn accrue_interest(&mut self, rate_bps: u32) -> Result<(), LedgerError> {
+    let rate = u128::from(rate_bps);
+    let new_balances = self
+        .balances
+        .values()
+        .map(|&balance| balance.checked_add(mul_div_floor(balance, rate, BPS_PER_UNIT)?))
+        .collect::<Option<Vec<u128>>>()
+        .ok_or(LedgerError::Overflow)?;
+    for (balance, new_balance) in self.balances.values_mut().zip(new_balances) {
+        *balance = new_balance;
+    }
+    Ok(())
+}
+```
+Export with a checked conversion, and `collect` into a `Result`, which stops at the first offender:
+```
+fn export(&self) -> Result<Vec<(String, u64)>, LedgerError> {
+    self.balances
+        .iter()
+        .map(|(name, &balance)| {
+            let amount = u64::try_from(balance).map_err(|_| LedgerError::TooLargeForApi {
+                account: name.clone(),
+            })?;
+            Ok((name.clone(), amount))
+        })
+        .collect()
+}
+```
+Alternatives that also pass: keeping the `HashMap` and sorting the entries before every use, or a fully checked split `balance / 10_000 * rate + balance % 10_000 * rate / 10_000`.
+
+Wrong fixes the tests catch:
+- a sorted `DefaultHasher`;
+- feeding `Hash` impls into FNV through a `Hasher` wrapper;
+- `balance.checked_mul(rate)`: it overflows for large balances even when the result fits;
+- dividing first;
+- the split with an unchecked `*`: it panics when the interest alone is above `u128::MAX`;
+- updating in place with `?`: alice is paid before zed fails;
+- `saturating_add`;
+- `unwrap_or(u64::MAX)`;
+- sorting the exported `Vec` after `collect`: the `Err` then names whichever offender the map yields first, not the first by name.
+
+std has no `From<usize> for u64`, which is why the length goes through `try_from`. Don't write `name.len().to_le_bytes()` either. It is 8 bytes only on 64-bit targets and 4 on 32-bit ones, which is exactly the platform dependence a digest must not have, and no test on a 64-bit machine can catch it.
+
+In production, the hash would be SHA-256 or BLAKE3 from a crate, and the encoding a canonical binary format such as Borsh or SSZ. The rules stay the same. For `as` and `TryFrom`, see `23_conversions/conversions1` and `conversions4`."""

@@ -460,6 +460,8 @@ bin = [
   { name = "checkedmath2_sol", path = "../solutions/66_checked_math/checkedmath2.rs" },
   { name = "checkedmath3", path = "../exercises/66_checked_math/checkedmath3.rs" },
   { name = "checkedmath3_sol", path = "../solutions/66_checked_math/checkedmath3.rs" },
+  { name = "checkedmath4", path = "../exercises/66_checked_math/checkedmath4.rs" },
+  { name = "checkedmath4_sol", path = "../solutions/66_checked_math/checkedmath4.rs" },
 ]
 
 [package]
