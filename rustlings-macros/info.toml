@@ -4264,6 +4264,34 @@ match (this.a_out.take(), this.b_out.take()) {
 ```
 Polling `b` before `a` works too. What the tests reject: returning `Pending` as soon as `a` is `Pending` (that is `a.await; b.await` again: 3 + 1 + 5 = 9 polls instead of max(3, 5) + 1 = 6, and the producer/consumer rendezvous never finishes); polling only one child per poll; polling a child that already returned `Ready`; checking for both outputs before polling instead of after (one poll too late); looping inside `poll` until a child is ready (the join must still be `Pending` after its first poll, and the mailbox detects the spin); and polling the children with a `Context` of your own instead of the caller's `cx`, or waking the task yourself (the test counts the wakeups exactly). Real crates (`futures::join!`, `tokio::join!`) wrap each child in a `MaybeDone` enum (still running, done with its output, or gone), which also drops a child as soon as it finishes, and they pin-project to support `!Unpin` children. Compare `28_futures/futures3` (the sequential state machine) and continue with `57_async_combinators/select1`."""
 
+[[exercises]]
+name = "select1"
+dir = "57_async_combinators"
+hint = """
+The tests fail, most of them with "not Ready after 100 polls": `Select::poll` never polls a child. Poll `a` first, poll `b` only while `a` is still `Pending`, and the moment one child is `Ready`, empty the OTHER slot. Setting an `Option` to `None` drops the future inside it, and dropping a future is how Rust cancels it: its destructors run right now, not when the `Select` itself is dropped.
+```
+let a = this
+    .a
+    .as_mut()
+    .expect("`Select` polled after it returned `Ready`");
+if let Poll::Ready(output) = Pin::new(a).poll(cx) {
+    this.b = None; // cancel the loser now
+    this.a = None;
+    return Poll::Ready(Either::Left(output));
+}
+let b = this
+    .b
+    .as_mut()
+    .expect("`Select` polled after it returned `Ready`");
+if let Poll::Ready(output) = Pin::new(b).poll(cx) {
+    this.a = None;
+    this.b = None;
+    return Poll::Ready(Either::Right(output));
+}
+Poll::Pending
+```
+Dropping the finished winner as well is optional; it turns a stray re-poll into a clear panic. Taking both children out and putting them back while the race is open works too. What the tests reject: keeping the loser in its slot, or dropping only the winner (the loser's `DropFlag` is still unset while the `Select` is alive, like a lock guard or a connection a canceled branch never releases); `mem::forget` (nothing is dropped, and clippy denies `mem_forget`); polling both children before deciding (`b` can complete on the same poll, and its output, a message it took out of a queue, is dropped with it: lost); polling `b` first (this `Select` is biased toward `a`, like `tokio::select!` with `biased;`, which is what keeps the tests deterministic); looping inside `poll` (the race must still be `Pending` after its first poll); and polling with a `Context` of your own. `futures::future::select` makes the other design choice and hands the unfinished future back: its output is `Either<(A::Output, B), (B::Output, A)>`. Continue with `57_async_combinators/cancel1`, where the dropped loser was still holding data."""
+
 # MODULE 4 · SEND / SYNC — the basis of fearless concurrency
 
 [[exercises]]
