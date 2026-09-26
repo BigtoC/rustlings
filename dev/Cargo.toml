@@ -524,6 +524,8 @@ bin = [
   { name = "review2_sol", path = "../solutions/67_code_review/review2.rs" },
   { name = "set_trie", path = "../exercises/68_mock_interviews/set_trie.rs" },
   { name = "set_trie_sol", path = "../solutions/68_mock_interviews/set_trie.rs" },
+  { name = "set_edit_distance", path = "../exercises/68_mock_interviews/set_edit_distance.rs" },
+  { name = "set_edit_distance_sol", path = "../solutions/68_mock_interviews/set_edit_distance.rs" },
 ]
 
 [package]

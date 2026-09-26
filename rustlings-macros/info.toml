@@ -7387,3 +7387,35 @@ fn insert(&mut self, word: &str) -> bool {
 }
 ```
 A `find(prefix) -> Option<&Node>` walks with `node = node.children.get(&c)?;`. Then `contains` is `find(word).is_some_and(|n| n.is_word)`, and `starts_with` is `find(prefix).is_some_and(|n| n.is_word || !n.children.is_empty())`. `suggest` walks down to the prefix's node, then depth first in key order (a node's own word before its children's words), pushes a clone of the path buffer for every word, and returns as soon as it holds `limit` words."""
+
+[[exercises]]
+name = "set_edit_distance"
+dir = "68_mock_interviews"
+hint = """
+This hint is the interviewer's rubric, then a sketch of a reference answer. Grade yourself against the rubric before you read the sketch.
+
+RUBRIC
+- Clarifying questions: bytes, `char`s or user-visible letters? Is swapping two neighbors one edit or two? Do all edits cost 1? How long can the strings be?
+- Derivation: say what a cell means before you write the recurrence. With n chars in `a` and m chars in `b`, `d[i][j]` is the distance between the first `i` chars of `a` and the first `j` chars of `b`. The last edit either keeps or substitutes a char (`d[i - 1][j - 1]` plus 0 or 1), deletes one (`d[i - 1][j] + 1`) or inserts one (`d[i][j - 1] + 1`). Row 0 is `0..=m` and column 0 is `0..=n`: turning a prefix into "" (or "" into a prefix) takes one edit per char. Getting row 0 and column 0 wrong is the most common bug (`empty_strings`).
+- Complexity: O(n * m) time. The full table is O(n * m) memory, but row `i` only reads row `i - 1`, so two rows are enough, and a row as long as the SHORTER string makes it O(min(n, m)). (One row plus a saved diagonal cell works too.) Counting the chars first costs O(n + m).
+- The Rust part: `str` has no O(1) "n-th char" (UTF-8 is variable width), so collect the shorter string into a `Vec<char>` once and stream the other one with `chars()`. `as_bytes()` is the wrong alphabet: "café" and "cafe" come out 2 apart instead of 1. And a `char` is not a letter on screen either: a precomposed "café" (ending in U+00E9) and a decomposed one (e plus U+0301) are 2 apart. Making the two equal takes Unicode normalization (the `unicode-normalization` crate), and counting "e" plus its accent as one letter takes grapheme segmentation (`unicode-segmentation`); std has neither.
+- Testing: both empty strings, symmetry, a pair you can check by hand, and random inputs against the full table.
+- Follow-up questions to expect: "is the distance at most k?" (only a band of width 2k + 1 around the diagonal matters: O(k * min(n, m)), and you can stop as soon as a whole row exceeds k); how to recover the edits themselves (keep the full table and walk back, or Hirschberg's algorithm for linear memory); Damerau-Levenshtein, where swapping neighbors costs 1 (`swapping_two_neighbors_costs_two` pins plain Levenshtein); different costs per edit; top-down recursion with memoization (the same O(n * m) time, but O(n * m) memory and recursion as deep as n + m).
+- Weak answers: recursion without memoization (exponential: the 3_000-char test never finishes), and the full table after the interviewer asked about memory. The tests cannot see memory use; the interviewer asks.
+
+REFERENCE SKETCH
+```
+let (long, short) = if a.chars().count() >= b.chars().count() { (a, b) } else { (b, a) };
+let short: Vec<char> = short.chars().collect();
+let mut prev: Vec<usize> = (0..=short.len()).collect();
+let mut curr = vec![0; short.len() + 1];
+for (i, lc) in long.chars().enumerate() {
+    curr[0] = i + 1;
+    for (j, &sc) in short.iter().enumerate() {
+        let substitute = prev[j] + usize::from(lc != sc);
+        curr[j + 1] = substitute.min(prev[j + 1] + 1).min(curr[j] + 1);
+    }
+    std::mem::swap(&mut prev, &mut curr);
+}
+prev[short.len()]
+```"""
