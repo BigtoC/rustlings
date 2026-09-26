@@ -4292,6 +4292,50 @@ Poll::Pending
 ```
 Dropping the finished winner as well is optional; it turns a stray re-poll into a clear panic. Taking both children out and putting them back while the race is open works too. What the tests reject: keeping the loser in its slot, or dropping only the winner (the loser's `DropFlag` is still unset while the `Select` is alive, like a lock guard or a connection a canceled branch never releases); `mem::forget` (nothing is dropped, and clippy denies `mem_forget`); polling both children before deciding (`b` can complete on the same poll, and its output, a message it took out of a queue, is dropped with it: lost); polling `b` first (this `Select` is biased toward `a`, like `tokio::select!` with `biased;`, which is what keeps the tests deterministic); looping inside `poll` (the race must still be `Pending` after its first poll); and polling with a `Context` of your own. `futures::future::select` makes the other design choice and hands the unfinished future back: its output is `Either<(A::Output, B), (B::Output, A)>`. Continue with `57_async_combinators/cancel1`, where the dropped loser was still holding data."""
 
+[[exercises]]
+name = "cancel1"
+dir = "57_async_combinators"
+hint = """
+`a_line_split_by_a_heartbeat_arrives_whole` fails with `left: Transcript { lines: ["lo", "ld"], heartbeats: 2 }`. When the `Timeout` wins a round, the round ends and its `read_line` future, pinned inside the loop body, is dropped (`select1`: dropping cancels). Its local `line` buffer, already holding "hel", goes with it, and the next round starts a NEW `read_line` that only sees "lo". `read_line` is not cancel safe: across its `.await` it keeps progress in the future's own state.
+
+Fix 1, make it cancel safe: keep the partial line in the reader, which outlives every `read_line` future. Add a field and initialize it in `new`:
+```
+struct LineReader {
+    source: Source,
+    pending: Vec<u8>,
+}
+// in `new`: LineReader { source, pending: Vec::new() }
+```
+In `read_line`, drop the local buffer, leave the newline arm (`break`) as it is, and change the other arms and the tail:
+```
+Some(byte) => self.pending.push(byte),
+None if self.pending.is_empty() => return None,
+None => break,
+```
+```
+let line = std::mem::take(&mut self.pending);
+Some(String::from_utf8(line).expect("the peer sent invalid UTF-8"))
+```
+No `.await` sits between taking a byte out of the source and storing it in `self.pending`, so a canceled `read_line` loses nothing and the next call continues the same line.
+
+Fix 2, stop canceling it: leave `read_line` alone and keep ONE future alive across heartbeats, racing a `Pin<&mut _>` to it against a fresh timer:
+```
+loop {
+    let mut line = pin!(reader.read_line());
+    let next = loop {
+        match select(line.as_mut(), Timeout::after(patience)).await {
+            Either::Left(next) => break next,
+            Either::Right(()) => transcript.heartbeats += 1,
+        }
+    };
+    match next {
+        Some(text) => transcript.lines.push(text),
+        None => return transcript,
+    }
+}
+```
+When the timeout wins, `Select` drops only the reference, and the future lives on in the outer loop's body and resumes next round. This is the `tokio::pin!(fut); loop { select! { v = &mut fut => .. } }` pattern. What the tests reject: removing the `select` or raising the patience (heartbeats are counted exactly); polling the timeout before the line (the tie in `a_line_that_completes_on_the_timeouts_last_poll_wins` becomes a heartbeat, and with patience 0 the line is never polled at all); pinning one future for the whole stream (it is polled again after it completed); clearing `pending` at the start of `read_line`, or not emptying it after a line; collecting `char`s instead of bytes (a heartbeat falls between the two bytes of 'é'); and a `static` or thread-local buffer (two readers polled in turns would mix their partial lines). tokio's `AsyncBufReadExt::read_line` has exactly this problem, while `Lines::next_line` and tokio-util's `FramedRead` keep the buffer in the reader (fix 1) and are cancel safe. The planned `backend-tokio-lab` (`select_cancel`) in `deep-dive/ROADMAP.md` repeats this with tokio's `select!` and `read_exact`."""
+
 # MODULE 4 · SEND / SYNC — the basis of fearless concurrency
 
 [[exercises]]
