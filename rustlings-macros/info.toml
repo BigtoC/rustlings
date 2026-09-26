@@ -2971,6 +2971,34 @@ where
 ```
 `T: Mul<Output = T> + std::iter::Sum + Copy` with `a.iter().zip(b).map(|(&x, &y)| x * y).sum()` is an equally good answer. For types that are not `Copy`, you add borrowed elements into an owned total with the higher-ranked bound `for<'a> T: Add<&'a T, Output = T>` (see `33_closures`). `i32` satisfies it, and so does `Vector` now that it has your `Vector + &Vector` impl."""
 
+[[exercises]]
+name = "gat1"
+dir = "43_assoc_types"
+hint = """
+"lifetime may not live long enough": `type Item = &'s mut [T]` promises windows that live as long as the whole slice. But `next` can only reborrow the slice through `&mut self`, and the next call hands out an overlapping window. Two overlapping `&mut` windows alive at once would alias, so std's `Iterator` (one `Item` type, unrelated to the `&mut self` borrow) cannot express this. A GAT lets each item borrow the iterator. Replace the `Iterator` impl with:
+```
+impl<'s, T> LendingIterator for WindowsMut<'s, T> {
+    type Item<'a>
+        = &'a mut [T]
+    where
+        Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        let window = self.slice.get_mut(self.start..)?.get_mut(..self.size)?;
+        self.start += 1;
+        Some(window)
+    }
+}
+```
+The body stays the same. The only change is that the item borrows for the borrow of `self` instead of for `'s`. Keep `where Self: 'a` in the impl: without it, `&'a mut [T]` is not known to be well-formed (E0477 and E0309, and rustc's help says to copy the where clause from the trait). A `for` loop needs `IntoIterator`, so `prefix_sums_in_place` has to drive the iterator by hand:
+```
+let mut windows = WindowsMut::new(values, 2);
+while let Some(window) = windows.next() {
+    window[1] += window[0];
+}
+```
+Each window dies at the end of the loop body, and that is what lets the next `next` call borrow the iterator again. Workarounds that stay with std's `Iterator` produce the wrong windows (and the tests' `count` helper needs a `LendingIterator` anyway). `mem::take` plus `split_at_mut` gives `&'s mut` chunks that do not overlap: 1 window of 3 over 5 elements instead of 3. Copying each window into a `Vec` means the writes never reach the slice. For `Copy` elements, std can do overlapping mutable windows without a GAT, via `Cell::from_mut(slice).as_slice_of_cells().windows(2)`, but the tests need `&mut [T]` windows. Tinker: delete `where Self: 'a` from the trait to see "missing required bound on `Item`". Or write a `for_each` helper bounded by `F: for<'a> FnMut(L::Item<'a>)` and watch a call on a borrowed local demand `'static` (E0597, "due to a current limitation of the type system")."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
