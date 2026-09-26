@@ -342,6 +342,8 @@ bin = [
   { name = "quiz4_sol", path = "../solutions/quizzes/quiz4.rs" },
   { name = "macros5", path = "../exercises/48_macros_deep/macros5.rs" },
   { name = "macros5_sol", path = "../solutions/48_macros_deep/macros5.rs" },
+  { name = "macros6", path = "../exercises/48_macros_deep/macros6.rs" },
+  { name = "macros6_sol", path = "../solutions/48_macros_deep/macros6.rs" },
   { name = "seams1", path = "../exercises/50_testing_seams/seams1.rs" },
   { name = "seams1_sol", path = "../solutions/50_testing_seams/seams1.rs" },
   { name = "seams2", path = "../exercises/50_testing_seams/seams2.rs" },

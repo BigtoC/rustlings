@@ -3872,6 +3872,38 @@ What fails:
 - collecting all keys first and all values after: the log test sees `k1, k2, k3, v1, ..`;
 - `$v.clone()`: `Payload` is not `Clone` (E0599), and a macro has no business copying its arguments anyway."""
 
+[[exercises]]
+name = "macros6"
+dir = "48_macros_deep"
+hint = """
+Five tests fail at run time (it compiles): the call counter reports `left: 7, right: 3`. A macro argument is an expression, and every `$x` in the transcriber pastes that expression again. This arm pastes `$x` twice AND the recursive `max!` of the rest twice, so every level can evaluate the whole rest of the list twice: with the arguments in increasing order, n arguments cost 2^n - 1 calls (1023 for ten).
+
+Bind each argument once, then compare the bindings:
+```
+macro_rules! max {
+    ($x:expr $(,)?) => {
+        $x
+    };
+    ($x:expr, $($rest:expr),+ $(,)?) => {{
+        let first = $x;
+        let rest = max!($($rest),+);
+        if first > rest { first } else { rest }
+    }};
+}
+```
+`first` is evaluated before the rest, so the order is left to right, and every argument is moved exactly once, which is why `String`s, `Vec`s and the non-`Clone` `Bid` work. Hygiene keeps `first` and `rest` apart from the caller's variables: `max!(rest, first, 3)` still reads the caller's own `first` and `rest`. The double braces turn the expansion into a block expression, so it can declare locals and still be used as an expression. On a tie, `>` returns the later argument, as the original did (and as `std::cmp::max` does).
+
+Also correct: `match ($x, max!($($rest),+)) { (first, rest) => if first > rest { first } else { rest } }` (std's `assert_eq!` and `dbg!` bind their arguments with `match`), or, without recursion, `[$x, $($rest),+].into_iter().reduce(|a, b| if a > b { a } else { b }).unwrap()`, since `reduce` on a non-empty array always returns `Some`.
+
+What fails:
+- binding only `$x`: the rest of the list is still expanded twice;
+- binding references (`let first = &$x;`) and returning `*first`: E0507 "cannot move out of `*first` which is behind a shared reference" in the `String` test;
+- returning `first.clone()`: `Bid` is not `Clone` (E0599);
+- `std::cmp::max(first, rest)`: it needs `Ord`, so `max!(1.5, -2.0, 0.25)` is E0277 "the trait bound `{float}: Ord` is not satisfied";
+- evaluating the rest before `$x`: the order becomes right to left, and the order tests fail.
+
+`std::cmp::max` is a function, so its two arguments are evaluated once, before the call. The macro exists only to take any number of arguments; it should behave like a function in every other way."""
+
 # TRAITS & ABSTRACTION · Testing Seams: Trait-Injected Dependencies, Recording Mocks and Fake Clocks
 
 [[exercises]]
