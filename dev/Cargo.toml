@@ -508,6 +508,8 @@ bin = [
   { name = "perf1_sol", path = "../solutions/65_performance/perf1.rs" },
   { name = "perf2", path = "../exercises/65_performance/perf2.rs" },
   { name = "perf2_sol", path = "../solutions/65_performance/perf2.rs" },
+  { name = "perf3", path = "../exercises/65_performance/perf3.rs" },
+  { name = "perf3_sol", path = "../solutions/65_performance/perf3.rs" },
   { name = "checkedmath1", path = "../exercises/66_checked_math/checkedmath1.rs" },
   { name = "checkedmath1_sol", path = "../solutions/66_checked_math/checkedmath1.rs" },
   { name = "checkedmath2", path = "../exercises/66_checked_math/checkedmath2.rs" },

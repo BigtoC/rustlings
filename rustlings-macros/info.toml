@@ -6963,6 +6963,53 @@ One they cannot catch: `&[impl ToString]` with `word.to_string().chars().count()
 
 A `Vec<Cow<str>>` whose words are all `Cow::Borrowed` passes as well, but a `Cow` is for results that are only sometimes owned (`45_sized_deref/cow1`). The opposite case, a function that STORES the string, takes `impl Into<String>` (`47_type_level/builder1`)."""
 
+[[exercises]]
+name = "perf3"
+dir = "65_performance"
+strict_clippy = true
+hint = """
+Three contracts, three bulk operations. This exercise runs Clippy with `-D warnings`, so fix the tests first, then Clippy.
+
+`dot`: the index loop over `0..a.len()` panics with "index out of bounds" when `b` is shorter, and silently ignores the rest of `b` when `a` is shorter. `zip` alone is no better: it stops at the shorter input. Check the contract first, then zip:
+```
+fn dot(a: &[f64], b: &[f64]) -> f64 {
+    assert_eq!(a.len(), b.len(), "length mismatch");
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+```
+`assert!(a.len() == b.len(), "length mismatch")`, or an `if` with a `panic!`, is just as good. Not `debug_assert_eq!`: it passes these tests (they run in a debug build), but release builds compile it out, and then `zip` truncates silently. An index loop behind the same assert is also correct. The assert is what lets LLVM drop that loop's bounds checks; look for `panic_bounds_check` in the assembly to be sure.
+
+`copy_prefix`: the loop runs to `src.len()` and indexes past a shorter `dst`. `copy_from_slice` is one `memcpy`, but it panics unless both sides have the same length, so cut both to the shorter one:
+```
+fn copy_prefix(dst: &mut [i32], src: &[i32]) -> usize {
+    let n = dst.len().min(src.len());
+    dst[..n].copy_from_slice(&src[..n]);
+    n
+}
+```
+`dst.copy_from_slice(src)` and `dst[..src.len()].copy_from_slice(src)` both panic in the tests. A loop over `0..n` passes the tests, and then Clippy's `manual_memcpy` rejects it. (`clone_from_slice` is the same for `Clone` types.) `for (d, s) in dst.iter_mut().zip(src)` passes the tests and Clippy (`manual_memcpy` only looks at index loops), and here `zip` stopping at the shorter slice is exactly the spec. LLVM usually turns that loop into a `memcpy`; `copy_from_slice` guarantees one and says so.
+
+`append_chunks`: pushing byte by byte into an empty `Vec` grows it to 8, 16, 32, ..., 2048 bytes for 1025 bytes of data. Add up the total, `reserve` it once, then copy each chunk in bulk:
+```
+fn append_chunks(out: &mut Vec<u8>, chunks: &[&[u8]]) {
+    let total = chunks.iter().map(|chunk| chunk.len()).sum();
+    out.reserve(total);
+    for chunk in chunks {
+        out.extend_from_slice(chunk);
+    }
+}
+```
+`reserve` does nothing when the capacity already suffices, so a buffer with room stays where it is, and a total of 0 allocates nothing. `reserve_exact(total)` works too.
+
+Versions the tests catch:
+- no `reserve`: `extend_from_slice` per chunk still grows step by step (capacity 1600), and so does `out.extend(chunks.iter().flat_map(|c| c.iter()))`, because the `size_hint` of `flat_map` cannot know the total;
+- `shrink_to_fit()` afterwards, or a new `Vec` assigned to `*out`: either one moves a buffer that had room.
+
+Versions the tests cannot catch:
+- `reserve_exact(chunk.len())` inside the loop ends with the same capacity as one `reserve_exact(total)`, but it reallocates for every chunk, and each reallocation may copy everything so far. That makes it quadratic.
+- `reserve(total)` followed by a byte-by-byte `push` (or an `extend` over a `flat_map`) never reallocates, but copies one byte at a time instead of one `memcpy` per chunk.
+- `out.extend_from_slice(&chunks.concat())` builds a whole temporary `Vec` first: two allocations and two copies instead of one of each."""
+
 # MODULE 5 · Checked Math: Overflow-Safe `mul_div`, Rounding Direction, Fixed Point and Determinism
 
 [[exercises]]
