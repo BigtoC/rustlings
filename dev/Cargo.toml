@@ -410,6 +410,8 @@ bin = [
   { name = "condvar2_sol", path = "../solutions/52_condvar/condvar2.rs" },
   { name = "condvar3", path = "../exercises/52_condvar/condvar3.rs" },
   { name = "condvar3_sol", path = "../solutions/52_condvar/condvar3.rs" },
+  { name = "deadlock1", path = "../exercises/53_lock_hazards/deadlock1.rs" },
+  { name = "deadlock1_sol", path = "../solutions/53_lock_hazards/deadlock1.rs" },
   { name = "atomics1", path = "../exercises/36_atomics/atomics1.rs" },
   { name = "atomics1_sol", path = "../solutions/36_atomics/atomics1.rs" },
   { name = "atomics2", path = "../exercises/36_atomics/atomics2.rs" },

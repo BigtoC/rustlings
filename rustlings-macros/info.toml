@@ -4838,6 +4838,46 @@ impl Drop for Permit<'_> {
 
 `Drop` runs however the holder's scope ends (a `return`, a `?`, a panic), so no permit can leak, and no lock is held while the permit is in use, so a panicking holder poisons nothing. One permit lets in one thread, so `notify_one` is enough (`notify_all` also works, but wakes the others for nothing). Notify on EVERY drop: skipping the notify when the count was not 0 strands a second waiter when two permits come back in quick succession (`two_permits_dropped_back_to_back_wake_two_waiters`). Notifying before you take the lock and increment is a lost wakeup: the woken thread can look before the count changes, see 0 and sleep through the permit. So is an `acquire` that calls `try_acquire` and then locks again just to wait. The loop is needed because this semaphore is not fair: a thread that was not even waiting can take the returned permit first. See `39_drop_raii` for more `Drop` guards, and tokio's `Semaphore` for an async, FIFO-fair version whose `acquire_owned` returns a permit that owns an `Arc` of its semaphore, so it can move into a spawned task."""
 
+# MODULE 4 · Lock Hazards: Deadlocks by Lock Order and RwLock Semantics
+
+[[exercises]]
+name = "deadlock1"
+dir = "53_lock_hazards"
+hint = """
+The failing tests take about 10 seconds: that is a watchdog giving up. There is no compiler error here. `transfer(2, 2, ..)` locks the same `Mutex` twice on one thread. std's `Mutex` is not reentrant, so the second `lock()` "will not return" (it might panic or deadlock). `transfer(1, 0, ..)` locks account 1 first, while `transfer(0, 1, ..)` on another thread locks account 0 first. Each then holds the lock the other is waiting for. That is a circular wait, which is a deadlock.
+
+Reject equal ids before locking anything. Then lock the two accounts in ascending index order, whichever way the money goes. That is the order `total` uses. Then map the guards back to their roles:
+```
+if from == to {
+    return Err(TransferError::SameAccount);
+}
+let (low, high) = (from.min(to), from.max(to));
+let mut low_guard = self.accounts[low].lock().unwrap();
+let mut high_guard = self.accounts[high].lock().unwrap();
+let (src, dst) = if from == low {
+    (&mut *low_guard, &mut *high_guard)
+} else {
+    (&mut *high_guard, &mut *low_guard)
+};
+if *src < amount {
+    return Err(TransferError::InsufficientFunds { balance: *src, amount });
+}
+*src -= amount;
+*dst += amount;
+Ok(())
+```
+Both guards live until the function returns, so every other thread sees the funds check, the debit and the credit as one step. Every code path must use the same order. Among transfers alone, descending order would also be consistent, but it deadlocks against `total`, which locks in ascending order.
+
+Wrong answers the tests catch:
+- Releasing `from` before locking `to` avoids the deadlock, but for a moment the money is in neither account (`a_transfer_holds_both_accounts_until_it_is_done`, and `total()` in `an_audit_during_transfers_always_balances`).
+- A `try_lock` back-off loop lets go of the lower account while it waits for the higher one.
+- A bank-wide `Mutex` makes `transfer(2, 3)` wait for a blocked `transfer(1, 0)`, although the two share no account.
+- Reordering the locks without mapping the guards back debits the wrong account.
+- Returning `Ok(())` for `from == to` hides a caller bug: the test expects `Err(SameAccount)`.
+- Checking the funds under a lock of its own before taking both locks is check-then-act: two transfers can both pass the check, and the second one underflows. It also locks `from` first, which the lock-order probe catches.
+
+When locks have no natural number, order them by address (compare `std::ptr::from_ref(a)` with `std::ptr::from_ref(b)`). That works as long as a lock never moves while anyone may lock it. For the single-thread self-deadlock, see also `31_debugging/debugging8`."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
