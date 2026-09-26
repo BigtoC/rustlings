@@ -504,6 +504,8 @@ bin = [
   { name = "parse2_sol", path = "../solutions/64_parsing/parse2.rs" },
   { name = "parse3", path = "../exercises/64_parsing/parse3.rs" },
   { name = "parse3_sol", path = "../solutions/64_parsing/parse3.rs" },
+  { name = "perf1", path = "../exercises/65_performance/perf1.rs" },
+  { name = "perf1_sol", path = "../solutions/65_performance/perf1.rs" },
   { name = "checkedmath1", path = "../exercises/66_checked_math/checkedmath1.rs" },
   { name = "checkedmath1_sol", path = "../solutions/66_checked_math/checkedmath1.rs" },
   { name = "checkedmath2", path = "../exercises/66_checked_math/checkedmath2.rs" },

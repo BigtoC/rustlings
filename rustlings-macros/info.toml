@@ -6891,6 +6891,47 @@ match self {
 
 What fails: part 2's right recursion (`8 - 3 - 2` becomes `Binary(Sub, 8, Binary(Sub, 3, 2))`); swapping the children; `-x` as `Binary(Sub, Num(0), x)` or as a negated `Num` (the tests want a `Neg` node); folding constants while parsing (the shape tests want every operator kept); skipping the trailing-input check; printing only the parentheses that are needed, none around `Neg`, parentheses around leaves, or no spaces (`display_is_fully_parenthesized` pins the format). Printing with as few parentheses as possible is the usual follow-up: that is the `minimal` function in the tests, which wraps a child only when its precedence is lower than its parent's, or equal on the right-hand side. `eval` is given: part 2's checked arithmetic, applied to the tree. Related: `26_smart_pointers_deep/smartptr1` (Box and recursive types), `23_conversions/conversions3` (FromStr), `66_checked_math/checkedmath3` (another canonical Display with a round-trip test)."""
 
+# MODULE 5 · Performance: Buffer Reuse, Borrowed Parameters and Returns, Bulk Slice Operations
+
+[[exercises]]
+name = "perf1"
+dir = "65_performance"
+strict_clippy = true
+hint = """
+This exercise runs Clippy with `-D warnings`. The tests catch a replaced buffer. Clippy's `format_push_string` (a `pedantic` lint that the `#![deny]` at the top turns on) catches the temporary `String` per line.
+
+`render_into_reuses_the_callers_buffer` fails because `*out = render(rows)` allocates a new `String` while the caller's is still alive (so it has a different address), then drops the caller's buffer with all its capacity. Clear the caller's buffer and write into it. Move the layout code into `render_into`, and make `render` the thin wrapper:
+```
+use std::fmt::Write;
+
+fn render(rows: &[Row]) -> String {
+    let mut table = String::new();
+    render_into(rows, &mut table);
+    table
+}
+
+fn render_into(rows: &[Row], out: &mut String) {
+    out.clear();
+    let _ = writeln!(out, "{:<10}{:>7}", "item", "count");
+    let mut total: u64 = 0;
+    for row in rows {
+        let _ = writeln!(out, "{:<10}{:>7}", row.item, row.count);
+        total += u64::from(row.count);
+    }
+    let _ = writeln!(out, "{:<10}{:>7}", "total", total);
+}
+```
+`clear()` keeps the capacity, so once the buffer has held the biggest frame, nothing allocates. `writeln!` on a `String` needs `std::fmt::Write` in scope. Without the `use`, rustc reports E0599 "cannot write into `String`" and suggests the import. `String::write_str` never fails, so the `fmt::Result` can only be an `Err` if a `Display` impl returns one: `let _ =`, `.unwrap()` and `.expect(..)` are all common. Use `writeln!`, not `write!` with a newline at the end of the format string; Clippy's `write_with_newline` rejects that here.
+
+Passing the tests is not the whole job. `write!(out, "{}", format!(..))` still builds the temporary, and Clippy rejects it (`format_in_format_args`). These versions allocate on every call too, and neither the tests nor Clippy can see it:
+- `out.clear(); out.push_str(&render(rows));` with a `write!`-based `render`: a whole temporary table, copied over.
+- `let line = format!(..); out.push_str(&line);` and `out.push_str(format!(..).as_str())`: the same temporary, and `format_push_string` misses both.
+- `row.count.to_string()` per line.
+
+Proving zero allocations takes a counting global allocator, which needs `unsafe`: that is the planned `alloc-perf-lab` deep-dive lab.
+
+`let mut buf = std::mem::take(out);`, fill `buf`, then `*out = buf;` is fine: the same allocation leaves and comes back. `shrink_to_fit()`, a new `String::with_capacity(..)`, or `mem::swap` with a new `String` fail the pointer or capacity checks."""
+
 # MODULE 5 · Checked Math: Overflow-Safe `mul_div`, Rounding Direction, Fixed Point and Determinism
 
 [[exercises]]
