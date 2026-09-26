@@ -6752,6 +6752,60 @@ Numbers: a non-empty run of ASCII digits can only fail to parse by overflowing, 
 
 What fails: positions from `.chars().enumerate()` (character counts, not byte offsets: the `$` in "é + $" is at byte 5); `&self.src[start..start + n]` with `n` counted in chars (the wrong slice, or a char-boundary panic); `Box::leak(name.to_string().into_boxed_str())` (the address check); `parse().unwrap()`, `parse::<u64>()` plus `as i64`, or a saturated `i64::MAX` for 9223372036854775808; giving up in the middle of an overlong literal (the rest of its digits must not come back as a second number); `c.is_numeric()` for digits (it accepts '١' and '½', which `parse` rejects); `is_ascii_alphabetic` for names ("héllo" falls apart into three items); `is_ascii_whitespace` (U+3000 IDEOGRAPHIC SPACE is whitespace too); peeking at a character without consuming it (the same item forever: the tests give up after `src.len()` items); returning `None` for good after the first error. Real lexers carry spans too: LALRPOP's custom lexers yield `(start, token, end)` triples."""
 
+[[exercises]]
+name = "parse2"
+dir = "64_parsing"
+hint = """
+Three problems with one cause: the given rules recurse on the RIGHT. `expr := term (('+' | '-') expr)?` reads `8 - 3 - 2` as `8 - (3 - 2)` = 7, `term` reads `8 / 4 / 2` as `8 / (4 / 2)` = 4, and every operator nests one level deeper, so a flat sum of more than `MAX_DEPTH` terms is `TooDeep`. On top of that the plain operators panic, and there is no unary minus.
+
+Read each level with a loop that folds the next operand into the running value, and put the checked arithmetic in one helper:
+```
+// expr := term (('+' | '-') term)*
+fn expr(&mut self) -> Result<i64, EvalError> {
+    let mut acc = self.term()?;
+    while let Some(op @ (Token::Plus | Token::Minus)) = self.peek()? {
+        self.bump()?;
+        acc = apply(op, acc, self.term()?)?;
+    }
+    Ok(acc)
+}
+
+// term := factor (('*' | '/') factor)*
+fn term(&mut self) -> Result<i64, EvalError> {
+    let mut acc = self.factor()?;
+    while let Some(op @ (Token::Star | Token::Slash)) = self.peek()? {
+        self.bump()?;
+        acc = apply(op, acc, self.factor()?)?;
+    }
+    Ok(acc)
+}
+
+// Outside the `impl Parser` block:
+fn apply(op: Token<'_>, lhs: i64, rhs: i64) -> Result<i64, EvalError> {
+    let value = match op {
+        Token::Plus => lhs.checked_add(rhs),
+        Token::Minus => lhs.checked_sub(rhs),
+        Token::Star => lhs.checked_mul(rhs),
+        Token::Slash if rhs == 0 => return Err(EvalError::DivByZero),
+        Token::Slash => lhs.checked_div(rhs),
+        _ => unreachable!("{op:?} is not a binary operator"),
+    };
+    value.ok_or(EvalError::Overflow)
+}
+```
+`checked_div` returns `None` both for a zero divisor and for `i64::MIN / -1` (2^63 does not fit in an `i64`), so the zero test has to come first: `checked_div(..).ok_or(Overflow)` alone reports `1 / 0` as `Overflow`, and `.ok_or(DivByZero)` reports `MIN / -1` as `DivByZero`. Both of those divisions panic in every build profile with plain `/`; `+`, `-` and `*` panic only in debug builds and wrap in release (`31_debugging/debugging2`).
+
+Unary minus is one more arm in `factor`, and it recurses through the depth guard:
+```
+Some((_, Token::Minus)) => self
+    .nested(Self::factor)?
+    .checked_neg()
+    .ok_or(EvalError::Overflow),
+```
+It negates one factor, so it binds tighter than `*`: `-4611686018427387904 * 2` is `i64::MIN`, while `-(4611686018427387904 * 2)` overflows. A loop that counts the minus signs and then calls `checked_neg` once per sign passes too (so does `0i64.checked_sub(x)`); negating once when the count is odd does not, because `--(-9223372036854775807 - 1)` must overflow at the inner minus. Calling `self.factor()` directly, without `nested`, aborts the whole test run with "has overflowed its stack" on 100_000 minus signs, and so does calling `self.expr()` for parentheses.
+
+What else fails: `wrapping_*` or `saturating_*` (a wrong number instead of `Overflow`); evaluating in `i128` and converting once at the end (`9223372036854775807 + 1 - 1` must be `Overflow`: every intermediate result must fit); `checked_div_euclid` (`-7 / 2` must be -3: `/` rounds toward zero, like Rust's); adding up the subtracted terms and subtracting once (it overflows in different places than left-to-right evaluation); a loop in `expr` but the old right recursion left in `term`; handling a minus only in front of the first term (`2 * -3`). Collecting a level's operands into a `Vec` and folding them afterwards is fine, and so is precedence climbing or a Pratt parser (one loop driven by a table of binding powers; see matklad's "Simple but Powerful Pratt Parsing")."""
+
 # MODULE 5 · Checked Math: Overflow-Safe `mul_div`, Rounding Direction, Fixed Point and Determinism
 
 [[exercises]]
