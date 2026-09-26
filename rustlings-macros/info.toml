@@ -2797,6 +2797,29 @@ impl From<Point> for (i32, i32) {
 ```
 Delete the old `Into` impl. If you keep it, you get E0119 "conflicting implementations of trait `Into<(i32, i32)>` for type `Point`" with "conflicting implementation in crate `core`": your `From` already gives you that `Into`. Clippy's `from_over_into` lint suggests exactly this rewrite (its help even says "`impl From<Local> for Foreign` is allowed by the orphan rules"). The Rust 1.41 relaxation (RFC 2451) was about GENERIC impls such as `impl<T> From<Wrapper<T>> for Vec<T>`. A concrete impl like this one has always been legal."""
 
+[[exercises]]
+name = "coherence2"
+dir = "42_coherence"
+hint = """
+E0119 "conflicting implementations of trait `Describe` for type `Vec<u8>`", with the note "upstream crates may add a new impl of trait `std::fmt::Display` for type `std::vec::Vec<u8>` in future versions". The blanket impl covers every type that is `Display`. rustc has to assume that std may make `Vec<u8>` `Display` in some future release, because implementing a trait for a type is a compatible change for std. So the two impls COULD overlap, and that is enough to reject them. The only types rustc may assume are not `Display` are the ones no other crate can change: local types, plus `&`, `&mut`, `Box` and `Pin` around them, which are fundamental. Move the byte case onto a local newtype:
+```
+struct Bytes(Vec<u8>);
+
+impl Describe for Bytes {
+    fn describe(&self) -> String {
+        match self.0.len() {
+            1 => "1 byte".to_string(),
+            n => format!("{n} bytes"),
+        }
+    }
+}
+```
+Then delete `impl Describe for Vec<u8>`. Don't give `Bytes` a `Display` impl as well. The blanket impl would then cover it, and you get E0119 again, this time without the "upstream" note, because the overlap is real. A `Display` impl that prints "3 bytes" INSTEAD of the `Describe` impl does compile, but `describe()` then goes through the blanket impl and returns "<3 bytes>". The tests also reject these shortcuts:
+- replacing the blanket impl with a list of per-type impls (the tests describe a `Display` type of their own);
+- narrowing it to `T: Display + Copy` (`String` and that test type are not `Copy`);
+- `impl Describe for &Vec<u8>` or `for Box<Vec<u8>>` (the same E0119, because `&` and `Box` only help around a LOCAL type).
+Stable Rust has no specialization, so you can't say "use this impl for `Vec<u8>` and the blanket impl for everything else". std does that only internally, through the unstable `min_specialization` feature; `ToString` is the best-known example."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
