@@ -306,6 +306,8 @@ bin = [
   { name = "coherence3_sol", path = "../solutions/42_coherence/coherence3.rs" },
   { name = "assoc1", path = "../exercises/43_assoc_types/assoc1.rs" },
   { name = "assoc1_sol", path = "../solutions/43_assoc_types/assoc1.rs" },
+  { name = "assoc2", path = "../exercises/43_assoc_types/assoc2.rs" },
+  { name = "assoc2_sol", path = "../solutions/43_assoc_types/assoc2.rs" },
   { name = "linkedlist1", path = "../exercises/27_data_structures/linkedlist1.rs" },
   { name = "linkedlist1_sol", path = "../solutions/27_data_structures/linkedlist1.rs" },
   { name = "ringbuffer1", path = "../exercises/27_data_structures/ringbuffer1.rs" },

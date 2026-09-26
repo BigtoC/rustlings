@@ -2914,6 +2914,63 @@ impl Graph for Grid {
 ```
 Inside an impl, `Self::Node` and `u32` are the same type, so the methods may keep their concrete signatures. `trait Graph where Self::Node: PartialEq { type Node; .. }` also works, because that where clause is implied just like the bound on the associated type. A bound on `edge` alone (`where Self::Node: PartialEq`) is not enough: `path_cost` and the tests' `leads_to` compare nodes without a bound of their own. With a PARAMETER bound (`trait Graph<N: PartialEq, E>`), every `G: Graph<N, E>` would have to restate `N: PartialEq` (E0277 "can't compare `N` with `N`"). Following rustc's "add missing generic arguments" help would put `N` and `E` back into every signature, which is exactly what `Iterator` avoids by having `type Item`."""
 
+[[exercises]]
+name = "assoc2"
+dir = "43_assoc_types"
+hint = """
+Part A: with `type Target`, `Celsius` can implement `ConvertTo` only once, whatever the target (E0119). Make the target a type PARAMETER, so that `ConvertTo<Fahrenheit>` and `ConvertTo<Kelvin>` are separate impls. Don't follow the E0107 help that suggests `ConvertTo<Target = Kelvin>`: that is still the one-impl design.
+```
+trait ConvertTo<T> {
+    fn convert(&self) -> T;
+}
+
+impl ConvertTo<Fahrenheit> for Celsius {
+    fn convert(&self) -> Fahrenheit {
+        Fahrenheit(self.0 * 9.0 / 5.0 + 32.0)
+    }
+}
+
+impl ConvertTo<Kelvin> for Celsius {
+    fn convert(&self) -> Kelvin {
+        Kelvin(self.0 + 273.15)
+    }
+}
+```
+Now each `c.convert()` in `report` could mean either impl (E0283). Name the target at the call site: `let f: Fahrenheit = c.convert();` and `let k: Kelvin = c.convert();` (or `ConvertTo::<Kelvin>::convert(&c)`). The `format!` cannot decide for you. It accepts any `Display` type, and rustc never picks an impl by checking which target would satisfy a later bound, even when only one of them would.
+
+Part B: operators take `self` BY VALUE, and `impl Add for Vector` only covers `Vector + Vector`. Add one impl per borrowed form. `Vector + &Vector` has the same `Self` and a different `Rhs` (the reason `Rhs` is a parameter), and it can reuse the owned buffer:
+```
+impl Add<&Vector> for Vector {
+    type Output = Vector;
+
+    fn add(mut self, rhs: &Vector) -> Vector {
+        assert_eq!(self.0.len(), rhs.0.len(), "dimension mismatch");
+        for (x, y) in self.0.iter_mut().zip(&rhs.0) {
+            *x += y;
+        }
+        self
+    }
+}
+
+impl Add<&Vector> for &Vector {
+    type Output = Vector;
+
+    fn add(self, rhs: &Vector) -> Vector {
+        assert_eq!(self.0.len(), rhs.0.len(), "dimension mismatch");
+        Vector(self.0.iter().zip(&rhs.0).map(|(x, y)| x + y).collect())
+    }
+}
+```
+`impl<'a> Add for &'a Vector` works as well. So does `Vector(self.0.clone()) + rhs` for the reference form: one allocation, then the in-place add. Without the length check, `zip` silently stops at the shorter vector and a `#[should_panic]` test fails. Writing `Vector + &Vector` as `&self + rhs` allocates a new buffer, which the heap-pointer test catches.
+
+Part C: `T: Mul` only says that `T * T` has type `<T as Mul>::Output`, which need not be `T`, and the same goes for `Add`. Pin both outputs down (rustc's help shows the syntax):
+```
+fn dot<T>(a: &[T], b: &[T]) -> T
+where
+    T: Add<Output = T> + Mul<Output = T> + Copy + Default,
+```
+`T: Mul<Output = T> + std::iter::Sum + Copy` with `a.iter().zip(b).map(|(&x, &y)| x * y).sum()` is an equally good answer. For types that are not `Copy`, you add borrowed elements into an owned total with the higher-ranked bound `for<'a> T: Add<&'a T, Output = T>` (see `33_closures`). `i32` satisfies it, and so does `Vector` now that it has your `Vector + &Vector` impl."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
