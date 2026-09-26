@@ -388,6 +388,8 @@ bin = [
   { name = "bst2_sol", path = "../solutions/61_trees/bst2.rs" },
   { name = "bst3", path = "../exercises/61_trees/bst3.rs" },
   { name = "bst3_sol", path = "../solutions/61_trees/bst3.rs" },
+  { name = "bst4", path = "../exercises/61_trees/bst4.rs" },
+  { name = "bst4_sol", path = "../solutions/61_trees/bst4.rs" },
   { name = "futures1", path = "../exercises/28_futures/futures1.rs" },
   { name = "futures1_sol", path = "../solutions/28_futures/futures1.rs" },
   { name = "futures2", path = "../exercises/28_futures/futures2.rs" },

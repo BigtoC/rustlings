@@ -4890,6 +4890,64 @@ fn height(&self) -> usize {
 ```
 (with `use std::collections::VecDeque;`). A depth-first stack of `(node, depth)` pairs that keeps the largest depth is just as good, and uses O(h) instead of O(width) memory. What fails: recursion in either function (the 200_000-deep test aborts with "has overflowed its stack"), following only the leftmost or the rightmost path, counting edges instead of nodes, swapping only the root's children, and writing the keys back in reverse order instead of relinking (the address test compares every node's key and children)."""
 
+[[exercises]]
+name = "bst4"
+dir = "61_trees"
+hint = """
+find_slot fails with E0499 "cannot borrow `*cur` as mutable more than once at a time" at `return cur`, with the note "returning this value requires that `cur.0` is borrowed for `'1`". `while let Some(node) = cur` takes a MUTABLE borrow of `*cur`. On the looping path that borrow flows into `cur`, which is returned, so it must last for the caller's `'1`, and NLL's location-insensitive constraints keep it live on the early-return path too. That is NLL problem case #3 (see `37_borrowck_errors/borrowck3`) inside a loop. Decide with a SHARED borrow, and take the mutable one only to step the cursor:
+```
+fn find_slot(&mut self, key: i32) -> &mut Option<Box<Node>> {
+    let mut cur = &mut self.root;
+    while cur.as_ref().is_some_and(|node| node.key != key) {
+        if let Some(node) = cur {
+            cur = if key < node.key { &mut node.left } else { &mut node.right };
+        }
+    }
+    cur
+}
+```
+`let node = cur.as_mut().unwrap();` in the body works too, and so does a let chain whose FIRST test is shared: `while let Some(node) = cur.as_deref() && node.key != key`, with `cur.as_mut().unwrap()` inside. These do NOT compile, because they take the mutable borrow before the test: `match cur { Some(node) if node.key != key => .., _ => return cur }`, `while let Some(node) = cur && node.key != key`, and `break` in place of `return cur`.
+
+`take_min` is the same walk along the left links, then an unlink:
+```
+fn take_min(slot: &mut Option<Box<Node>>) -> Option<Box<Node>> {
+    let mut cur = slot;
+    while cur.as_ref().is_some_and(|node| node.left.is_some()) {
+        if let Some(node) = cur {
+            cur = &mut node.left;
+        }
+    }
+    let mut min = cur.take()?;
+    *cur = min.right.take();
+    Some(min)
+}
+```
+(A loop that `break`s when `node.left` is empty and then calls `cur.take()` gets E0499 plus E0506 "cannot assign to `*cur` because it is borrowed": returning the cursor is not required to hit this.)
+
+`remove` takes the node out of its slot and writes the replacement back:
+```
+fn remove(&mut self, key: i32) -> bool {
+    let slot = self.find_slot(key);
+    let Some(mut node) = slot.take() else {
+        return false;
+    };
+    *slot = match (node.left.take(), node.right.take()) {
+        (None, None) => None,
+        (Some(child), None) | (None, Some(child)) => Some(child),
+        (Some(left), Some(right)) => {
+            let mut right = Some(right);
+            let mut successor = take_min(&mut right).expect("the right subtree is not empty");
+            successor.left = Some(left);
+            successor.right = right;
+            Some(successor)
+        }
+    };
+    self.len -= 1;
+    true
+}
+```
+What fails: copying the successor's key into the removed node (the address checks: the successor's key must stay in its own node), picking the predecessor or hanging the left subtree under the successor instead of moving the successor up (the shape checks), moving a successor or predecessor up when the node has only one child (the one-child test: the child's whole subtree moves up), `unwrap` on a missing key, a forgotten `self.len -= 1`, and recursion anywhere (the 200_000-deep test aborts with "has overflowed its stack"). On nightly, the original Polonius (`-Zpolonius`) accepts the starter's `find_slot`; `-Zpolonius=next` still rejects the loop."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
