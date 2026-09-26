@@ -3076,6 +3076,81 @@ Wrong turns:
 
 `Reverse` and min-heaps come back in `contracts3`."""
 
+[[exercises]]
+name = "contracts3"
+dir = "44_trait_contracts"
+hint = """
+`f64` is only `PartialEq + PartialOrd`:
+- `NaN != NaN`, so `==` is not reflexive and `f64` is not `Eq`.
+- `NaN.partial_cmp(&x)` is `None`, so the order is not total and `f64` is not `Ord`.
+- `-0.0 == 0.0` although the bits differ, so there is no simple `Hash`.
+
+Every API that needs a total order rejects `f64` at compile time. You get E0277 "the trait bound `f64: Ord` is not satisfied" (`sort`, the first `push`), plus E0599 "... but its trait bounds were not satisfied" for heap methods that only exist when `T: Ord`. `f64::total_cmp` (stable since 1.62) is IEEE 754's totalOrder: -NaN < -inf < ... < -0.0 < 0.0 < ... < inf < NaN. Two values are equal under it exactly when their bits are equal.
+
+Part A: `values.sort_by(f64::total_cmp);`. `sort_unstable_by` works too, because values that are equal under a total order are identical. `partial_cmp(..).unwrap()` panics on NaN. `.unwrap_or(Ordering::Equal)` is not transitive, leaves `0.0` and `-0.0` in input order, and may even make `sort` panic.
+
+Part B: derive only `Debug, Clone, Copy` and write every comparison trait from `total_cmp`:
+```
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
+
+#[derive(Debug, Clone, Copy)]
+struct TotalF64(f64);
+
+impl PartialEq for TotalF64 {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.total_cmp(&other.0).is_eq()
+    }
+}
+
+impl Eq for TotalF64 {}
+
+impl PartialOrd for TotalF64 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TotalF64 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.total_cmp(&other.0)
+    }
+}
+
+impl Hash for TotalF64 {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.to_bits().hash(state);
+    }
+}
+```
+`self.0.to_bits() == other.0.to_bits()` is an equivalent `eq`. Keeping the derived `PartialEq` and adding `impl Eq for TotalF64 {}` compiles, but then NaN is not equal to itself and `==` disagrees with `cmp` on the zeros. The tests catch it. A hash that merges keys (`self.0 as i64`, `abs()`, a constant) fails the nine-different-hashes test. The newtype is needed because `impl Ord for f64` is E0117 (the orphan rule, see `42_coherence`).
+
+Part C: push `TotalF64(value)` instead of `value`, and unwrap at the end:
+```
+heap.into_sorted_vec()
+    .into_iter()
+    .map(|TotalF64(value)| value)
+    .collect()
+```
+
+Part D: store the cost as a `TotalF64`, so `State` can derive `PartialEq, Eq, PartialOrd, Ord`. Declaration order matters, as in `contracts2`: `cost` decides and `node` breaks ties, so different states are never `Equal`. Then turn the max-heap into a min-heap with `std::cmp::Reverse`:
+```
+use std::cmp::Reverse;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct State {
+    cost: TotalF64,
+    node: usize,
+}
+
+heap.push(Reverse(State { cost: TotalF64(0.0), node: start }));
+while let Some(Reverse(State { cost: TotalF64(cost), node })) = heap.pop() {
+    // ... unchanged ...
+    heap.push(Reverse(State { cost: TotalF64(next_cost), node: next }));
+}
+```
+An `Ord for State` that is just `self.cost.total_cmp(&other.cost)` compiles but keeps a max-heap. The early return then answers with the most expensive path: the direct-edge test gets 10 instead of 3. The Dijkstra example in the std `BinaryHeap` docs flips the comparison inside `cmp` instead. With f64 costs that is `other.cost.total_cmp(&self.cost).then_with(|| self.node.cmp(&other.node))`, together with hand-written `PartialEq`, `Eq` and `PartialOrd` that agree with it. Negating the costs also flips the order, but it hides the intent and cannot work for unsigned integer costs."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
