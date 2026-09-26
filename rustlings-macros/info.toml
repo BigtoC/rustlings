@@ -4090,6 +4090,40 @@ fn put(&mut self, key: K, value: V) -> Option<(K, V)> {
 ```
 This is why an entry stores its key: without it, an eviction could not find the map entry to remove. Wrong turns the tests catch: pushing a new entry on every eviction (`nodes` grows past 3), `Vec::remove` or `swap_remove` on the tail (other entries move, and the new key does not land in the evicted slot), evicting `head` instead of `tail`, forgetting the old head's `prev` in `push_front` or the `tail` update in `unlink` (the forward and backward walks disagree), leaving the evicted key in `map` (it would then find the new key's value), and finding a key by scanning `nodes` instead of asking `map` (`hits_updates_and_evictions_are_hash_lookups_not_scans` counts key comparisons). Compare `59_arena/arena2`: here no free list or generations are needed, because a slot is only freed to be reused at once and no index leaves the cache."""
 
+[[exercises]]
+name = "lru3"
+dir = "60_lru_cache"
+hint = """
+E0308 "expected `&String`, found `&str`": `get` takes `&K`, so only a `&String` fits. Give it the signature of `HashMap::get` (`45_sized_deref/borrow1`), and the body can stay as it is, because `HashMap::get` accepts the same `&Q`:
+```
+use std::borrow::Borrow;
+
+fn get<Q>(&mut self, key: &Q) -> Option<&V>
+where
+    K: Borrow<Q>,
+    Q: Hash + Eq + ?Sized,
+{
+    let &i = self.map.get(key)?;
+    self.unlink(i);
+    self.push_front(i);
+    Some(&self.nodes[i].value)
+}
+```
+Without `?Sized` the `str` and `[u8]` calls fail with E0277 "the size for values of type `str` cannot be known at compilation time": a type parameter is `Sized` unless it opts out. `get(&owned)` keeps working through the blanket `impl<T: ?Sized> Borrow<T> for T`, and so do the `u32` keys.
+
+E0599 "no method named `peek`": add it with the same bounds and `&self`, because it only reads. It looks the key up and indexes `nodes`, and it never touches the links:
+```
+fn peek<Q>(&self, key: &Q) -> Option<&V>
+where
+    K: Borrow<Q>,
+    Q: Hash + Eq + ?Sized,
+{
+    let &i = self.map.get(key)?;
+    Some(&self.nodes[i].value)
+}
+```
+Wrong turns the tests reject at compile time: `key: &str` (then `Vec<u8>` and `u32` keys cannot be looked up), `Q: ToOwned<Owned = K>` with `key.to_owned()` (it allocates, and a `str` becomes a `String`, not an `Arc<str>`: E0271), `K: From<&Q>` (there is no `From<&u32>` for `u32`), `K: AsRef<Q>` with a scan (O(n), and neither `u32` nor `String` is `AsRef` of itself: E0277), and a `peek(&mut self)`, or one that calls `get` (E0596 through the `&LruCache` and the `RwLock` read guard). At run time, a `peek` that scans `nodes` or walks the list fails `get_and_peek_are_one_hash_lookup_not_a_scan`. Because `get` needs `&mut self`, a cache behind a `RwLock` takes the write lock for every lookup that counts as a use; the README covers what production caches do about that."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
