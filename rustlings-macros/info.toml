@@ -1966,6 +1966,45 @@ too. Leaking the roster (`Box::leak`) compiles but loses the "freed" log line,
 and removing `Inspector`'s `Drop` loses the inspector lines. See the
 Rustonomicon's "Drop Check" chapter, where `Inspector` comes from."""
 
+[[exercises]]
+name = "raii4"
+dir = "39_drop_raii"
+hint = """
+The drop counter stays at 0: `adopt` makes the parent own the child (in
+`children`) and the child own the parent (in `parent`). That is a cycle of
+strong `Rc`s whose counts never reach zero, so no `Drop` runs and both nodes
+leak, safely (a leak is not undefined behavior). Make the child's link
+non-owning with `Weak`, as in `26_smart_pointers_deep/smartptr2`:
+```
+use std::rc::{Rc, Weak};
+
+struct Node {
+    name: &'static str,
+    parent: RefCell<Weak<Node>>,
+    children: RefCell<Vec<Rc<Node>>>,
+    drops: Rc<Cell<u32>>,
+}
+
+// in Node::new:
+    parent: RefCell::new(Weak::new()),
+
+fn parent(&self) -> Option<Rc<Node>> {
+    self.parent.borrow().upgrade()
+}
+
+// in adopt:
+    *child.parent.borrow_mut() = Rc::downgrade(parent);
+```
+`Rc::downgrade` bumps only the weak count, so the parent's strong count stays
+at 1 and dropping the last handle frees it; `upgrade` returns `None` from then
+on. `RefCell<Option<Weak<Node>>>` works too. Making `children` weak instead
+breaks the other direction: a parent must own its children (the tests use
+`children` as `Rc`s, and a child whose test handle is gone must survive).
+Dropping the parent link entirely fails the `parent()` tests. The general rule
+is that ownership flows one way (parent to children) and back-pointers only
+observe; an arena addressed by index (`59_arena`) avoids reference counting
+altogether."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
