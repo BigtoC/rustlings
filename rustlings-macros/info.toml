@@ -4488,6 +4488,39 @@ because `Rc` is `!Send + !Sync`, so `assert_send::<Shared>()` won't compile. Fix
 change the top `use std::rc::Rc;` to `use std::sync::Arc;`, make the field
 `value: Arc<i32>,`, and construct it with `Arc::new(value)`."""
 
+# MODULE 4 · Async Bounds: Why `spawn` Needs `Send + 'static`
+
+[[exercises]]
+name = "async_send1"
+dir = "56_async_bounds"
+hint = """
+"future cannot be sent between threads safely ... has type `std::sync::MutexGuard<'_, Stats>` which is not `Send` ... await occurs here, with `mut guard` maybe used later" has no E-code. It is the unmet `F: Send` bound of `spawn` (and of the tests' `assert_send`), worded for futures. An `async fn` stores every local that is still alive at an `.await` in its state machine, and `MutexGuard` is `!Send` (with POSIX threads, a mutex must be unlocked by the thread that locked it). In `record`, end each guard before the handler is awaited. A temporary guard dies at the end of its statement:
+```
+async fn record(stats: Arc<Mutex<Stats>>, id: u32) {
+    stats.lock().unwrap().started += 1;
+    handle_request().await;
+    let mut guard = stats.lock().unwrap();
+    guard.finished += 1;
+    guard.queued.push(id);
+}
+```
+The guard after the `.await` is fine because no `.await` follows it. A `{ let mut guard = ..; guard.started += 1; }` block works just as well.
+
+In `flush`, `drop(guard)` releases the lock at run time, but `&mut guard.queued` borrowed `guard` through `DerefMut`. A local that was ever borrowed keeps its slot in the future until its scope ends, even after it was moved out. A read-only `guard.field` access through `Deref` counts as a borrow too. So end the scope instead:
+```
+let batch = {
+    let mut guard = stats.lock().unwrap();
+    mem::take(&mut guard.queued)
+};
+```
+or, in one statement, `let batch = mem::take(&mut stats.lock().unwrap().queued);`. `mem::take` empties the queue while it is locked, so ids queued during the upload wait for the next flush. Cloning the queue and clearing it after the upload loses them, and `ids_queued_during_an_upload_wait_for_the_next_flush` catches that. `drop` only helps for a guard that was never borrowed.
+
+Wrong turns:
+- Removing the `.await`, or calling `block_on(handle_request())` while locked, compiles but fails the tests that poll `record` by hand: the first poll must stop inside the handler with the lock free.
+- `mem::forget(guard)` fails just like `drop`, because the borrowed guard is still in the future. It would also never unlock.
+
+Clippy's `await_holding_lock` lint flags both starter functions, including the one with the explicit `drop`. A current-thread runtime does not help: `tokio::spawn` still demands `Send`. Only `block_on` or `spawn_local` would accept this future, and there it could deadlock the thread. If a lock really must stay held across an `.await`, use an async mutex such as `tokio::sync::Mutex`. For short bookkeeping like this, the std `Mutex` is the right tool."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
