@@ -3365,6 +3365,115 @@ A `NonZeroUsize` for `workers` would move the zero check into the type itself,
 the direction `typestate1` takes for the URL. The module README compares
 consuming and `&mut self` builders and explains `#[non_exhaustive]`."""
 
+[[exercises]]
+name = "typestate1"
+dir = "47_type_level"
+hint = """
+The first test compile shows mostly name-resolution errors: E0425 "cannot find
+type `NoUrl` in this scope" (and `HasUrl`), E0405 "cannot find trait `State` in
+this scope" and E0433 "cannot find module or crate `sealed`". An unresolved
+trait stops rustc before it type-checks function bodies, so declare the states
+and the sealed trait first:
+```
+mod sealed {
+    pub trait Sealed {}
+}
+
+pub trait State: sealed::Sealed {}
+
+#[derive(Debug)]
+pub struct NoUrl;
+
+#[derive(Debug)]
+pub struct HasUrl;
+
+impl sealed::Sealed for NoUrl {}
+impl sealed::Sealed for HasUrl {}
+impl State for NoUrl {}
+impl State for HasUrl {}
+```
+`Sealed` must be `pub` inside the private module. A private `trait Sealed` is
+E0603 "trait `Sealed` is private" at `State`'s supertrait list and at each
+impl, and `pub(crate)` trips the `private_bounds` warning. Another crate cannot
+name `sealed::Sealed`, so it can never implement `State`.
+
+Next, E0107 "struct takes 0 generic arguments but 1 generic argument was
+supplied" (and E0283 "type annotations needed" at `state_of`): give the builder
+its state parameter. A parameter that no field uses is E0392, so hold it in a
+zero-sized `PhantomData<S>` (add `use std::marker::PhantomData;`). The url can
+be a plain `String`, empty (no allocation) until `url()` sets it:
+```
+#[must_use]
+#[derive(Debug)]
+pub struct RequestBuilder<S> {
+    url: String,
+    headers: Vec<(String, String)>,
+    state: PhantomData<S>,
+}
+
+impl Default for RequestBuilder<NoUrl> {
+    fn default() -> Self {
+        RequestBuilder {
+            url: String::new(),
+            headers: Vec::new(),
+            state: PhantomData,
+        }
+    }
+}
+```
+Don't keep `#[derive(Default)]`. On a generic struct it generates
+`impl<S: Default> Default for RequestBuilder<S>`, so `RequestBuilder::default()`
+cannot pick the state by itself (E0283 in `default_starts_without_a_url`), and
+the day `HasUrl` gets a `Default`, anyone can skip `url()`. The same goes for a
+hand-written `impl<S: State> Default`.
+
+Last, E0308 "mismatched types" (expected `Request`, found `Result<Request,
+SendError>`): write one `impl` block per set of states.
+```
+impl<S: State> RequestBuilder<S> {
+    pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push((name.into(), value.into()));
+        self
+    }
+}
+
+impl RequestBuilder<NoUrl> {
+    pub fn url(self, url: impl Into<String>) -> RequestBuilder<HasUrl> {
+        RequestBuilder {
+            url: url.into(),
+            headers: self.headers,
+            state: PhantomData,
+        }
+    }
+}
+
+impl RequestBuilder<HasUrl> {
+    pub fn send(self) -> Request {
+        Request {
+            url: self.url,
+            headers: self.headers,
+        }
+    }
+}
+```
+`SendError` is now unused, so delete it. `url()` returns a different type, so
+it cannot say `Self`, and it moves `self.headers` across instead of cloning
+them (a pointer test checks). Keeping `url: Option<String>` with an `expect` in
+`send()` also passes, but it keeps a run-time check the types have made
+pointless. A data-carrying state (`HasUrl(String)` stored in the builder) is
+also a valid typestate design, but its states differ in size, which this
+exercise rules out on purpose.
+
+The last two tests call `send()` on a `NoUrl` builder and `url()` on a `HasUrl`
+builder through test-local traits. Method lookup prefers a type's own (inherent)
+methods, so the trait's version runs only when the builder has no such method.
+A `send()` or `url()` defined for every `S` therefore fails them. These tests
+still cannot prove that the call fails to compile. Try
+`RequestBuilder::default().send();` in `main` to see E0599 with the note "the
+method was found for `RequestBuilder<HasUrl>`". The planned `api-surface-lab`
+turns that into a `compile_fail` doctest. For choosing a `PhantomData` marker
+with the right variance and auto traits, see the planned `38_variance`."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
