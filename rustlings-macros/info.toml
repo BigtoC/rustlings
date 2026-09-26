@@ -4851,6 +4851,45 @@ The helper's parameter must be `Option<&'a Node>`: with a bare `Option<&Node>` r
 
 What fails: collecting every node up front (the stack-length test on the 1023-node tree), a recursive `push_left_chain` (the 200_000-deep chain of left children aborts with "has overflowed its stack"), a pre-order walk (the order tests), and `Box::leak(Box::new(node.key))` (the address tests). Once `next` returns `None` it keeps returning `None`, because the stack stays empty; `impl FusedIterator for InOrder<'_> {}` would state that promise in the type. Follow-up questions: the memory cost (O(h) versus O(n) for a collected `Vec`), and why `tree.insert(..)` inside `for k in &tree` is E0502."""
 
+[[exercises]]
+name = "bst3"
+dir = "61_trees"
+hint = """
+`height` is empty: E0308 "mismatched types" (expected `usize`, found `()`). `invert` compiles as it is (an empty body returns `()`), so once `height` compiles, the invert tests fail until it mirrors the tree.
+
+Invert with an explicit stack of `&mut Node`:
+```
+fn invert(&mut self) {
+    let mut pending: Vec<&mut Node> = Vec::new();
+    pending.extend(self.root.as_deref_mut());
+    while let Some(node) = pending.pop() {
+        std::mem::swap(&mut node.left, &mut node.right);
+        pending.extend(node.left.as_deref_mut());
+        pending.extend(node.right.as_deref_mut());
+    }
+}
+```
+Several `&mut Node` live in the `Vec` at once, and that is sound: each one was reborrowed from its parent through `left` or `right`, two disjoint fields, and the parent's `&mut` is never used again after its children were pushed. `mem::swap` exchanges two pointers; no subtree moves and no key changes node. `Option::as_deref_mut` turns `&mut Option<Box<Node>>` into `Option<&mut Node>`, and `Vec::extend` accepts an `Option` because `Option` implements `IntoIterator` (zero or one items). A `VecDeque` used as a queue works the same.
+
+Height, breadth-first: count the levels.
+```
+fn height(&self) -> usize {
+    let mut level: VecDeque<&Node> = self.root.as_deref().into_iter().collect();
+    let mut height = 0;
+    while !level.is_empty() {
+        height += 1;
+        for _ in 0..level.len() {
+            if let Some(node) = level.pop_front() {
+                level.extend(node.left.as_deref());
+                level.extend(node.right.as_deref());
+            }
+        }
+    }
+    height
+}
+```
+(with `use std::collections::VecDeque;`). A depth-first stack of `(node, depth)` pairs that keeps the largest depth is just as good, and uses O(h) instead of O(width) memory. What fails: recursion in either function (the 200_000-deep test aborts with "has overflowed its stack"), following only the leftmost or the rightmost path, counting edges instead of nodes, swapping only the root's children, and writing the keys back in reverse order instead of relinking (the address test compares every node's key and children)."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
