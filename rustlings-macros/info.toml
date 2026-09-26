@@ -6806,6 +6806,91 @@ It negates one factor, so it binds tighter than `*`: `-4611686018427387904 * 2` 
 
 What else fails: `wrapping_*` or `saturating_*` (a wrong number instead of `Overflow`); evaluating in `i128` and converting once at the end (`9223372036854775807 + 1 - 1` must be `Overflow`: every intermediate result must fit); `checked_div_euclid` (`-7 / 2` must be -3: `/` rounds toward zero, like Rust's); adding up the subtracted terms and subtracting once (it overflows in different places than left-to-right evaluation); a loop in `expr` but the old right recursion left in `term`; handling a minus only in front of the first term (`2 * -3`). Collecting a level's operands into a `Vec` and folding them afterwards is fine, and so is precedence climbing or a Pratt parser (one loop driven by a table of binding powers; see matklad's "Simple but Powerful Pratt Parsing")."""
 
+[[exercises]]
+name = "parse3"
+dir = "64_parsing"
+hint = """
+Two empty bodies, two E0308 "mismatched types" errors: `from_str` must return `Result<Expr, ParseError>`, and `fmt` must return `fmt::Result`.
+
+`from_str`: part 2's grammar again, but each loop folds the next operand into a TREE. The tree built so far becomes the LEFT child of the new node, and that is what makes the tree left-deep:
+```
+impl Parser<'_> {
+    // expr := term (('+' | '-') term)*
+    fn expr(&mut self) -> Result<Expr, ParseError> {
+        let mut acc = self.term()?;
+        loop {
+            let op = match self.peek()? {
+                Some(Token::Plus) => BinOp::Add,
+                Some(Token::Minus) => BinOp::Sub,
+                _ => return Ok(acc),
+            };
+            self.bump()?;
+            let rhs = self.term()?;
+            acc = Expr::Binary(op, Box::new(acc), Box::new(rhs));
+        }
+    }
+
+    // term := factor (('*' | '/') factor)*
+    fn term(&mut self) -> Result<Expr, ParseError> {
+        let mut acc = self.factor()?;
+        loop {
+            let op = match self.peek()? {
+                Some(Token::Star) => BinOp::Mul,
+                Some(Token::Slash) => BinOp::Div,
+                _ => return Ok(acc),
+            };
+            self.bump()?;
+            let rhs = self.factor()?;
+            acc = Expr::Binary(op, Box::new(acc), Box::new(rhs));
+        }
+    }
+
+    // factor := '-' factor | NUMBER | IDENT | '(' expr ')'
+    fn factor(&mut self) -> Result<Expr, ParseError> {
+        match self.bump()? {
+            Some((_, Token::Num(n))) => Ok(Expr::Num(n)),
+            Some((_, Token::Ident(name))) => Ok(Expr::Var(name.to_owned())),
+            Some((_, Token::Minus)) => Ok(Expr::Neg(Box::new(self.nested(Self::factor)?))),
+            Some((_, Token::LParen)) => {
+                let inner = self.nested(Self::expr)?;
+                self.close_paren()?;
+                Ok(inner)
+            }
+            Some((pos, _)) => Err(ParseError::UnexpectedToken { pos }),
+            None => Err(ParseError::UnexpectedEnd),
+        }
+    }
+}
+
+impl FromStr for Expr {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parser = Parser { tokens: Lexer::new(s).peekable(), depth: 0 };
+        let expr = parser.expr()?;
+        match parser.bump()? {
+            None => Ok(expr),
+            Some((pos, _)) => Err(ParseError::TrailingInput { pos }),
+        }
+    }
+}
+```
+`acc = Expr::Binary(op, Box::new(acc), Box::new(rhs))` moves the old `acc` into the new node before the node is assigned back, which the borrow checker accepts. `name.to_owned()` is the one copy of the source text: `from_str(s: &str) -> Result<Self, _>` has no lifetime that could let `Self` borrow `s`. The parentheses arm returns `inner` itself, so `(((7)))` is just `Num(7)`.
+
+Unary minus must go through `nested` as well, not only parentheses: in a tree every minus is a node, so a loop that stacks 100_000 `Neg` nodes builds a tree too deep to print, evaluate or even drop, and the test run aborts with "has overflowed its stack".
+
+`fmt`: one arm per variant. `{lhs}` and `{rhs}` recurse into the children through this same impl:
+```
+match self {
+    Expr::Num(n) => write!(f, "{n}"),
+    Expr::Var(name) => f.write_str(name),
+    Expr::Neg(operand) => write!(f, "(-{operand})"),
+    Expr::Binary(op, lhs, rhs) => write!(f, "({lhs} {op} {rhs})"),
+}
+```
+
+What fails: part 2's right recursion (`8 - 3 - 2` becomes `Binary(Sub, 8, Binary(Sub, 3, 2))`); swapping the children; `-x` as `Binary(Sub, Num(0), x)` or as a negated `Num` (the tests want a `Neg` node); folding constants while parsing (the shape tests want every operator kept); skipping the trailing-input check; printing only the parentheses that are needed, none around `Neg`, parentheses around leaves, or no spaces (`display_is_fully_parenthesized` pins the format). Printing with as few parentheses as possible is the usual follow-up: that is the `minimal` function in the tests, which wraps a child only when its precedence is lower than its parent's, or equal on the right-hand side. `eval` is given: part 2's checked arithmetic, applied to the tree. Related: `26_smart_pointers_deep/smartptr1` (Box and recursive types), `23_conversions/conversions3` (FromStr), `66_checked_math/checkedmath3` (another canonical Display with a round-trip test)."""
+
 # MODULE 5 · Checked Math: Overflow-Safe `mul_div`, Rounding Direction, Fixed Point and Determinism
 
 [[exercises]]
