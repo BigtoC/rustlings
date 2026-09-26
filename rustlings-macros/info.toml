@@ -3474,6 +3474,80 @@ method was found for `RequestBuilder<HasUrl>`". The planned `api-surface-lab`
 turns that into a `compile_fail` doctest. For choosing a `PhantomData` marker
 with the right variance and auto traits, see the planned `38_variance`."""
 
+# TRAITS & ABSTRACTION · Testing Seams: Trait-Injected Dependencies, Recording Mocks and Fake Clocks
+
+[[exercises]]
+name = "seams1"
+dir = "50_testing_seams"
+hint = """
+E0596 "cannot borrow `self.sent` as mutable, as it is behind a `&` reference" and E0594
+"cannot assign to `self.calls`, which is behind a `&` reference": every method of the
+double takes `&self`. `send` does because the `Mailer` trait says so, and the others do
+because the tests reach the double only through `service.mailer()`, which returns `&M`.
+rustc's help says to change the method AND the trait to `&mut self`. Don't: the receiver
+is part of the production contract (real mailers are shared handles),
+`resend_confirmation(&self)` sends mail through a shared service, and
+`the_double_records_through_shared_references` calls `send` through two `&mock` at once.
+Move the mutability into the double's fields instead:
+```
+use std::cell::{Cell, RefCell};
+
+struct MockMailer {
+    sent: RefCell<Vec<Mail>>,
+    calls: Cell<u32>,
+    fail_next: Cell<Option<MailError>>,
+}
+
+impl MockMailer {
+    fn new() -> Self {
+        MockMailer {
+            sent: RefCell::new(Vec::new()),
+            calls: Cell::new(0),
+            fail_next: Cell::new(None),
+        }
+    }
+
+    fn fail_next_with(&self, err: MailError) {
+        self.fail_next.set(Some(err));
+    }
+
+    fn take_sent(&self) -> Vec<Mail> {
+        self.sent.take()
+    }
+
+    fn calls(&self) -> u32 {
+        self.calls.get()
+    }
+}
+
+impl Mailer for MockMailer {
+    fn send(&self, to: &str, subject: &str) -> Result<(), MailError> {
+        self.calls.update(|n| n + 1);
+        if let Some(err) = self.fail_next.take() {
+            return Err(err);
+        }
+        self.sent.borrow_mut().push(Mail {
+            to: to.to_string(),
+            subject: subject.to_string(),
+        });
+        Ok(())
+    }
+}
+```
+`Cell` fits the counter (`Copy`: `get`, `set`, `update`) and the one-shot script (`take`
+works for any `T: Default`, and `Option` is one), because neither needs a reference to its
+contents. The log needs `RefCell`: `borrow_mut()` lends out a `&mut Vec` for the `push`,
+and the temporary `RefMut` ends with that statement. `RefCell::take` (or
+`mem::take(&mut *self.sent.borrow_mut())`) hands the record over and leaves it empty.
+`RefCell<u32>` and `RefCell<Option<MailError>>` work too, and so does one `RefCell` around
+a struct holding all three fields; `Cell` is just cheaper and can't panic. A double that
+must be `Send + Sync` (shared between threads) needs `Mutex` fields or atomics instead, as
+in seams2. See `26_smart_pointers_deep/smartptr3`, `40_interior_mutability/cell1` and the
+Book's `MockMessenger` (ch15-05). The tests catch the shortcuts: counting only successful
+sends, recording a failed mail, a script that never clears, a `take_sent` that copies
+instead of emptying, and state shared by all doubles (a `static` or a `thread_local!`)
+all fail."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]

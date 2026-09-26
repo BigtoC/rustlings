@@ -328,6 +328,8 @@ bin = [
   { name = "builder1_sol", path = "../solutions/47_type_level/builder1.rs" },
   { name = "typestate1", path = "../exercises/47_type_level/typestate1.rs" },
   { name = "typestate1_sol", path = "../solutions/47_type_level/typestate1.rs" },
+  { name = "seams1", path = "../exercises/50_testing_seams/seams1.rs" },
+  { name = "seams1_sol", path = "../solutions/50_testing_seams/seams1.rs" },
   { name = "linkedlist1", path = "../exercises/27_data_structures/linkedlist1.rs" },
   { name = "linkedlist1_sol", path = "../solutions/27_data_structures/linkedlist1.rs" },
   { name = "ringbuffer1", path = "../exercises/27_data_structures/ringbuffer1.rs" },
