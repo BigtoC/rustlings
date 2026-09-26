@@ -18,8 +18,10 @@ Two of the labs point at extra tooling that makes the danger visible:
 
 ```bash
 # Check the raw-pointer labs (raw_vec, myarc, unsafe_list) for undefined
-# behaviour by running their tests under Miri:
-cargo +nightly miri test --manifest-path deep-dive/Cargo.toml
+# behaviour by running their tests under Miri. CI (the `deep-dive-miri` job)
+# runs this with strict provenance under both aliasing models:
+MIRIFLAGS="-Zmiri-strict-provenance" cargo +nightly miri test --manifest-path deep-dive/Cargo.toml
+MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-strict-provenance" cargo +nightly miri test --manifest-path deep-dive/Cargo.toml
 
 # Model-check the atomics handoff across every thread interleaving with loom
 # (the loom_lab module + its dependency are compiled only under this cfg):

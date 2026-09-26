@@ -83,6 +83,34 @@ jobs:
           cargo test --manifest-path deep-dive/Cargo.toml loom_lab > loom.log 2>&1 || { cat loom.log; exit 1; }
           cat loom.log
           grep -qE '^test loom_lab::tests::' loom.log || { echo "No loom test ran: loom_lab was compiled away."; exit 1; }
+  # The deep-dive labs are `unsafe` on purpose; `cargo test` only proves they give
+  # the right answers, not that they are free of undefined behaviour. Miri
+  # interprets the tests and rejects UB (aliasing violations, use-after-free,
+  # invalid values, ...). Run it under both aliasing models, with strict
+  # provenance, so a lab that relies on either model's leniency fails here.
+  deep-dive-miri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Miri
+        # rustup picks the newest nightly that actually ships the miri component.
+        run: |
+          rustup toolchain install nightly --profile minimal --component miri
+          cargo +nightly miri setup
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: deep-dive -> target
+          # The cache key is derived from the default (stable) toolchain; keep the
+          # nightly Miri artifacts apart from the `deep-dive` job's cache.
+          key: miri
+      - name: Miri (Stacked Borrows)
+        env:
+          MIRIFLAGS: -Zmiri-strict-provenance
+        run: cargo +nightly miri test --manifest-path deep-dive/Cargo.toml
+      - name: Miri (Tree Borrows)
+        env:
+          MIRIFLAGS: -Zmiri-tree-borrows -Zmiri-strict-provenance
+        run: cargo +nightly miri test --manifest-path deep-dive/Cargo.toml
   rumdl:
       runs-on: ubuntu-latest
       steps:

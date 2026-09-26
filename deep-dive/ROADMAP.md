@@ -93,7 +93,7 @@ Tier 2, not started:
 
 Deep-dive labs, not started:
 
-- [ ] `deep-dive/src/ub_zoo.rs` + Miri CI step
+- [ ] `deep-dive/src/ub_zoo.rs` (the Miri CI step is done: the `deep-dive-miri` job)
 - [ ] `deep-dive/src/ffi_lab.rs`
 - [ ] `deep-dive/tests/alloc_count.rs` + `deep-dive/src/perf_lab.rs`
 - [ ] `deep-dive/src/ordering_lab.rs` + `treiber.rs`
