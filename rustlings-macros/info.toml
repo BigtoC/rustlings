@@ -3237,6 +3237,31 @@ fn intern(&mut self, s: &str) -> Rc<str> {
 ```
 `Rc::from(s)` makes one allocation that holds both counts and the bytes; `Rc::new(String)` needs two. The set itself now answers `contains("hello")` as well. Searching with `get(&Rc::from(s))`, or scanning with `iter().find(..)`, also passes the tests, but it allocates or scans on every lookup, which is exactly what `Borrow` exists to avoid. (`get(&s.to_string())` does not even compile: `Rc<str>` is not `Borrow<String>`.) Turning an `Rc<String>` into a fresh `Rc<str>` on each call breaks the `Rc::ptr_eq` tests. `60_lru_cache/lru3` applies the same signature to a cache."""
 
+[[exercises]]
+name = "cow1"
+dir = "45_sized_deref"
+hint = """
+E0308 "expected `&Cow<'_, str>`, found `&String`" (plus E0599 "no method named `to_mut` found for struct `String`") means the tests need to see whether the input came back untouched. First decide cheaply, borrow when nothing changes, and build new text only otherwise:
+```
+use std::borrow::Cow;
+
+fn collapse_spaces(s: &str) -> Cow<'_, str> {
+    if !s.contains("  ") {
+        return Cow::Borrowed(s);
+    }
+    let mut out = String::with_capacity(s.len());
+    // ... the same loop as before ...
+    Cow::Owned(out)
+}
+```
+Then `normalize` fails with "expected `String`, found `Cow<'_, str>`". Pass the `Cow` through. `s.trim()` is a slice of `s`, so a borrowed result still borrows from the caller's string:
+```
+fn normalize(s: &str) -> Cow<'_, str> {
+    collapse_spaces(s.trim())
+}
+```
+Write `Cow<'_, str>`, not `Cow<str>`. The short form compiles, but it triggers the `mismatched_lifetime_syntaxes` warning (Rust 1.89+). The tests reject: `Cow::Owned` for clean input (it allocates); `String::leak` or `Box::leak` for changed input (a leak, and not `Owned`); a single-space check (`s.contains(' ')` makes almost every input `Owned`); `.into_owned()` or `.to_string()` in `normalize` (it copies a borrowed result); and `split(' ')` plus `join` (it drops the spaces at the ends). One mistake they cannot see: building the collapsed `String` first and returning `Borrowed(s)` when it equals the input. That still allocates on every call, so decide before you allocate. A lazier single pass is fine too: `s.find("  ")` gives the first double space at `i`; copy `s[..=i]` and keep collapsing from `i + 1`."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
