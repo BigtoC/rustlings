@@ -464,6 +464,8 @@ bin = [
   { name = "checkedmath4_sol", path = "../solutions/66_checked_math/checkedmath4.rs" },
   { name = "review1", path = "../exercises/67_code_review/review1.rs" },
   { name = "review1_sol", path = "../solutions/67_code_review/review1.rs" },
+  { name = "review2", path = "../exercises/67_code_review/review2.rs" },
+  { name = "review2_sol", path = "../solutions/67_code_review/review2.rs" },
 ]
 
 [package]

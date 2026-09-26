@@ -5837,3 +5837,54 @@ fn parse_amount(word: &str) -> Result<u64, LedgerError> {
 Then call `parse_amount(amount)?` in both arms. `unwrap_or(0)` would quietly deposit or transfer 0.
 
 In the interview, finish by ranking the findings and saying how CI would have caught each one: a boundary test per bug, plus the opt-in clippy lints `arithmetic_side_effects`, `string_slice`, `cast_possible_truncation` and `unwrap_used`. No lint finds the limit, statement-order or `RefCell` bug. Only tests do, and for the `RefCell` bug only a test whose observer calls back into the ledger."""
+
+[[exercises]]
+name = "review2"
+dir = "67_code_review"
+strict_clippy = true
+hint = """
+The tests already pass; only clippy fails. Every error names its line and comes with a `help:` that points to the idiomatic form. For each change, know what it buys (see the comments at the top of the file), and run the tests again: they pin the behavior.
+
+`ptr_arg` (twice): take a slice and a `&str`. The tests still pass a `&Vec<Player>` and a `&String`, and deref coercion turns them into `&[Player]` and `&str`. Keep the `'a`: with two reference parameters, elision cannot tell which one the result borrows from (E0106 "missing lifetime specifier").
+```
+fn find_player<'a>(players: &'a [Player], name: &str) -> Option<&'a Player> {
+```
+Leave the body alone. The comparison is ASCII-only on purpose: `to_lowercase()` on both sides would match "ZOË" to "Zoë", allocate two `String`s per player, and fail the test.
+
+`len_zero` and `needless_range_loop` in `top_player`: `split_first` does the empty check and hands you the first element and the rest, with no index left to get wrong:
+```
+let (first, rest) = players.split_first()?;
+let mut best = first;
+for player in rest {
+    if player.rating > best.rating {
+        best = player;
+    }
+}
+Some(best)
+```
+Keep `>`: a later player must be strictly better to take over. Do NOT write `players.iter().max_by_key(|p| p.rating)`: when several elements are equally maximum it returns the LAST one (its docs say so), and `a_tie_goes_to_the_player_listed_first` fails. Correct one-liners: `players.iter().reduce(|best, p| if p.rating > best.rating { p } else { best })`, or `players.iter().min_by_key(|p| std::cmp::Reverse(p.rating))` (`min_by_key` returns the FIRST minimum).
+
+`needless_return` in `average_score`: end the function with the expression itself:
+```
+Some(total as f64 / player.scores.len() as f64)
+```
+If you also turn the loop into a sum, sum `u64`s: `player.scores.iter().map(|&s| u64::from(s)).sum::<u64>()`. A `.sum::<u32>()` overflows on `average_score_of_huge_scores_does_not_overflow`.
+
+`manual_map` in `lobby_tag`:
+```
+player.nickname.as_deref().map(str::to_uppercase)
+```
+(`to_ascii_uppercase` would turn "zoë" into "ZOë", and the test checks that.)
+
+`unnecessary_unwrap` in `display_name`: check and extract in one step, still borrowing from `player`:
+```
+player.nickname.as_deref().unwrap_or(&player.name)
+```
+
+`manual_clamp` in `shown_rating`:
+```
+player.rating.clamp(MIN_RATING, MAX_RATING)
+```
+`clamp` panics if `min > max`, which is why clippy only suggests it when both bounds are constants in the right order. `max(MIN_RATING).min(MAX_RATING)` is the same pattern, and clippy flags it too.
+
+Adding `#[allow(clippy::...)]` would make clippy quiet, but in a review it answers nothing."""
