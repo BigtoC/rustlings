@@ -2820,6 +2820,59 @@ Then delete `impl Describe for Vec<u8>`. Don't give `Bytes` a `Display` impl as 
 - `impl Describe for &Vec<u8>` or `for Box<Vec<u8>>` (the same E0119, because `&` and `Box` only help around a LOCAL type).
 Stable Rust has no specialization, so you can't say "use this impl for `Vec<u8>` and the blanket impl for everything else". std does that only internally, through the unstable `min_specialization` feature; `ToString` is the best-known example."""
 
+[[exercises]]
+name = "coherence3"
+dir = "42_coherence"
+hint = """
+Part A: E0118 "no nominal type found for inherent implementation". An inherent `impl` block is for ONE type defined in this crate, and `impl<I: Iterator> I` names every iterator, which is no type at all. (For a foreign struct the error is E0116, and for `str` it is E0390.) Write an extension trait: a local trait with `Iterator` as a supertrait and the methods as PROVIDED methods, plus one blanket impl with an empty body:
+```
+trait IterExt: Iterator + Sized {
+    fn pairwise(self) -> Pairwise<Self>
+    where
+        Self::Item: Clone,
+    {
+        Pairwise {
+            inner: self,
+            prev: None,
+        }
+    }
+
+    fn dedup_adjacent(self) -> DedupAdjacent<Self>
+    where
+        Self::Item: PartialEq,
+    {
+        DedupAdjacent {
+            inner: self.peekable(),
+        }
+    }
+}
+
+impl<I: Iterator> IterExt for I {}
+```
+The trait needs `Sized` because the methods take `self` by value and store it in a struct. Without it you get E0277 "the size for values of type `Self` cannot be known at compilation time". Two alternatives also pass. The itertools style is `trait IterExt: Iterator` with `where Self: Sized, Self::Item: Clone` on each method and `impl<I: Iterator + ?Sized> IterExt for I {}`. You can also return `impl Iterator<Item = (Self::Item, Self::Item)>` from the trait methods. Keep each bound on its own method. With `impl<I: Iterator> IterExt for I where I::Item: Clone + PartialEq`, both methods disappear for the tests' non-`Clone` `Token` and non-`PartialEq` `Frame`. An impl for only a few std iterators misses the tests' `Countdown` and the adapters themselves. Collecting into a `Vec` first fails the laziness test (it pulls 1000 items instead of 3).
+
+Part B: E0390 "cannot define inherent `impl` for primitive types", with the help "consider using an extension trait instead". Declare the two methods in a trait and implement it once, for `str`:
+```
+trait StrExt {
+    fn is_blank(&self) -> bool;
+    fn truncate_ellipsis(&self, max_chars: usize) -> String;
+}
+
+impl StrExt for str {
+    fn is_blank(&self) -> bool {
+        self.chars().all(char::is_whitespace)
+    }
+
+    fn truncate_ellipsis(&self, max_chars: usize) -> String {
+        match self.char_indices().nth(max_chars) {
+            Some((cut, _)) => format!("{}…", &self[..cut]),
+            None => self.to_string(),
+        }
+    }
+}
+```
+Method calls auto-deref `String`, `&String`, `Box<str>` and `Rc<str>` down to `str`, then auto-ref to `&str`, so this one impl serves every string type. Separate impls for `String` and `&str` miss `Box<str>` and `Rc<str>`, and `StrExt::is_blank("")` needs `str: StrExt`. `impl<T: AsRef<str> + ?Sized> StrExt for T` is a valid alternative, but without the `?Sized` it does not cover `str` itself. Code in other modules must import the trait (`use crate::StrExt;`). Otherwise it gets E0599 with the help "trait `StrExt` which provides `is_blank` is implemented but not in scope"."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]

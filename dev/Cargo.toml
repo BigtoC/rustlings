@@ -302,6 +302,8 @@ bin = [
   { name = "coherence1_sol", path = "../solutions/42_coherence/coherence1.rs" },
   { name = "coherence2", path = "../exercises/42_coherence/coherence2.rs" },
   { name = "coherence2_sol", path = "../solutions/42_coherence/coherence2.rs" },
+  { name = "coherence3", path = "../exercises/42_coherence/coherence3.rs" },
+  { name = "coherence3_sol", path = "../solutions/42_coherence/coherence3.rs" },
   { name = "linkedlist1", path = "../exercises/27_data_structures/linkedlist1.rs" },
   { name = "linkedlist1_sol", path = "../solutions/27_data_structures/linkedlist1.rs" },
   { name = "ringbuffer1", path = "../exercises/27_data_structures/ringbuffer1.rs" },
