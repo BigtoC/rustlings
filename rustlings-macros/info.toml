@@ -3993,6 +3993,56 @@ What fails:
 
 `cargo test` lists every row as its own test (`tests::tables::counts_words ... ok`), so a failure names its row. The `test-case` and `rstest` crates do the same with procedural macros; the module README compares declarative and procedural macros."""
 
+# TRAITS & ABSTRACTION · Panics: `catch_unwind`, `UnwindSafe`, Poisoning and Panic Safety
+
+[[exercises]]
+name = "panic1"
+dir = "49_panics"
+hint = """
+Two changes. `panic_message` must ask the payload for each of the two string
+types a panic message can arrive as: `panic!("boom")` throws a
+`&'static str`, a message formatted at run time or an `.expect(..)` throws a
+`String`, and which one you get is an implementation detail. `run_isolated`
+must stop the unwinding: `catch_unwind(f)` alone is E0277 "the type
+`impl FnOnce() -> R` may not be safely transferred across an unwind
+boundary", and rustc's suggested `+ UnwindSafe` bound only moves that E0277
+into every test that captures a `&mut Vec` or a `&Cell`. Assert unwind safety
+at the boundary instead:
+```
+use std::any::Any;
+use std::panic::{self, AssertUnwindSafe};
+
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        String::from(*message)
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        String::from(NON_STRING_PAYLOAD)
+    }
+}
+
+fn run_isolated<R>(f: impl FnOnce() -> R) -> Result<R, String> {
+    panic::catch_unwind(AssertUnwindSafe(f)).map_err(|payload| panic_message(&*payload))
+}
+```
+`AssertUnwindSafe<F>` implements `FnOnce` itself, so `AssertUnwindSafe(|| f())`
+is the same thing, only longer (clippy's `redundant_closure` says so). Pass
+`&*payload` (or `payload.as_ref()`): `&payload` compiles too, but it turns the
+BOX into the `&dyn Any`, every downcast then says no, and all the panicking
+tests get the fallback (the trap of `32_dispatch/dispatch5`). These fail as
+well: downcasting only one of the two string types (the literal or the
+formatted tests), `downcast_ref::<str>()` (E0277: `str` is unsized),
+`format!("{payload:?}")` (it prints `Any { .. }`), running `f` on a scoped
+thread (it needs `F: Send` and `R: Send`: E0277 in `run_isolated`, or, once
+you add those bounds, at the tests with the `&Cell` closure and the `Rc`
+result), and an `F: UnwindSafe` bound. An owned payload can also be taken
+apart without a clone: `payload.downcast::<String>()` returns the box back on
+a mismatch. In a panic hook, `PanicHookInfo::payload_as_str()` (Rust 1.91)
+does this downcast for you. `catch_unwind` catches only unwinding panics; the
+README lists the cases that abort (`panic = "abort"`, a panic escaping a
+`Drop` during unwinding, a panic leaving an `extern "C" fn`)."""
+
 # TRAITS & ABSTRACTION · Testing Seams: Trait-Injected Dependencies, Recording Mocks and Fake Clocks
 
 [[exercises]]
