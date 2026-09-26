@@ -4235,6 +4235,35 @@ match future.as_mut().poll(&mut cx) {
 }
 ```"""
 
+# MODULE 3 · Async Combinators: Join, Select and Cancel Safety
+
+[[exercises]]
+name = "join1"
+dir = "57_async_combinators"
+hint = """
+The tests fail, most of them with "not Ready after 100 polls": `Join::poll` returns `Pending` without polling either child, so nothing ever finishes. A join must poll EVERY unfinished child on every poll (that is what makes it concurrent), store each output the moment it arrives, and never poll a finished child again (the test leaves panic, and so do `async` blocks and `std::future::Ready`). The stored `Option` doubles as the "done" flag:
+```
+if this.a_out.is_none()
+    && let Poll::Ready(output) = Pin::new(&mut this.a).poll(cx)
+{
+    this.a_out = Some(output);
+}
+if this.b_out.is_none()
+    && let Poll::Ready(output) = Pin::new(&mut this.b).poll(cx)
+{
+    this.b_out = Some(output);
+}
+match (this.a_out.take(), this.b_out.take()) {
+    (Some(a), Some(b)) => Poll::Ready((a, b)),
+    (a, b) => {
+        this.a_out = a;
+        this.b_out = b;
+        Poll::Pending
+    }
+}
+```
+Polling `b` before `a` works too. What the tests reject: returning `Pending` as soon as `a` is `Pending` (that is `a.await; b.await` again: 3 + 1 + 5 = 9 polls instead of max(3, 5) + 1 = 6, and the producer/consumer rendezvous never finishes); polling only one child per poll; polling a child that already returned `Ready`; checking for both outputs before polling instead of after (one poll too late); looping inside `poll` until a child is ready (the join must still be `Pending` after its first poll, and the mailbox detects the spin); and polling the children with a `Context` of your own instead of the caller's `cx`, or waking the task yourself (the test counts the wakeups exactly). Real crates (`futures::join!`, `tokio::join!`) wrap each child in a `MaybeDone` enum (still running, done with its output, or gone), which also drops a child as soon as it finishes, and they pin-project to support `!Unpin` children. Compare `28_futures/futures3` (the sequential state machine) and continue with `57_async_combinators/select1`."""
+
 # MODULE 4 · SEND / SYNC — the basis of fearless concurrency
 
 [[exercises]]
