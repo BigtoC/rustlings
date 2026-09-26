@@ -4920,6 +4920,45 @@ These also work:
 
 `RwLockWriteGuard::downgrade` (Rust 1.92) goes the other way, from write to read. If `make` were slow, you would build the value with no lock held and keep the first value stored (`31_debugging/debugging8`)."""
 
+# MODULE 4 · Channels: Backpressure, Disconnect-Driven Shutdown and Actors
+
+[[exercises]]
+name = "channel1"
+dir = "54_channels"
+hint = """
+The tests fail at run time: at capacity 2 the third offer returns `Ok(())` where `Err(OfferError::Busy(3))` is expected. `mpsc::channel()` is unbounded, so its `send` never finds the buffer full, and `bounded` never even looks at `capacity` (rustc warns about the unused variable).
+
+Use std's bounded channel, and offer with the non-blocking `try_send`. Both of its errors hand the item back, so it moves into your error without a copy:
+```
+use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
+
+struct Ingest<T> {
+    tx: SyncSender<T>,
+}
+
+// Inside `impl<T> Ingest<T>`:
+fn bounded(capacity: usize) -> (Ingest<T>, Receiver<T>) {
+    let (tx, rx) = mpsc::sync_channel(capacity);
+    (Ingest { tx }, rx)
+}
+
+fn offer(&self, item: T) -> Result<(), OfferError<T>> {
+    self.tx.try_send(item).map_err(|err| match err {
+        TrySendError::Full(item) => OfferError::Busy(item),
+        TrySendError::Disconnected(item) => OfferError::Closed(item),
+    })
+}
+```
+The `Clone` impl compiles unchanged: a `SyncSender` clones like a `Sender`, and all clones share one buffer. `sync_channel(0)` is the rendezvous: `try_send` succeeds only while a receiver is already blocked in `recv`. Once the receiver is gone, `try_send` reports `Disconnected` even if the buffer is also full, so a closed queue is never mistaken for a busy one.
+
+Wrong answers the tests catch:
+- `sync_channel(capacity)` with `send` instead of `try_send`: a full buffer blocks the caller. That is backpressure by waiting, the other valid design, but not what `offer` promises, and the watchdog reports "`offer` blocked". Falling back to `send` after `Full`, or retrying `try_send` in a loop, blocks the same way.
+- `sync_channel(capacity.max(1))` or `capacity + 1`: the buffer can hold one item too many, and the rendezvous or capacity tests fail.
+- Mapping both errors to `Busy`: callers would retry forever against a queue that is closed.
+- A counter next to an unbounded channel: the consumer never decrements it, so after `capacity` items every offer is `Busy` forever, even once the consumer has drained the queue or gone away.
+
+Tokio's `mpsc::channel(n)` offers the same two choices: `send(..).await` waits, `try_send` fails with `TrySendError::Full` or `Closed`. The planned deep-dive lab `backend-tokio-lab` maps `Full` to HTTP 503. See also `52_condvar/condvar2`, which builds a bounded queue by hand from a `Mutex` and two `Condvar`s."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"

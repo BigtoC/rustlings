@@ -414,6 +414,8 @@ bin = [
   { name = "deadlock1_sol", path = "../solutions/53_lock_hazards/deadlock1.rs" },
   { name = "rwlock1", path = "../exercises/53_lock_hazards/rwlock1.rs" },
   { name = "rwlock1_sol", path = "../solutions/53_lock_hazards/rwlock1.rs" },
+  { name = "channel1", path = "../exercises/54_channels/channel1.rs" },
+  { name = "channel1_sol", path = "../solutions/54_channels/channel1.rs" },
   { name = "atomics1", path = "../exercises/36_atomics/atomics1.rs" },
   { name = "atomics1_sol", path = "../solutions/36_atomics/atomics1.rs" },
   { name = "atomics2", path = "../exercises/36_atomics/atomics2.rs" },
