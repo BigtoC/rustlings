@@ -2151,6 +2151,50 @@ Why each one holds, and whether it is GUARANTEED (written down by the language) 
 The three closure answers are CURRENT RUSTC: the Reference says "Closures have no layout guarantees".
 If you are stuck, measure a neighbor in `main` (for example `println!("{}", size_of::<Option<&u16>>() / size_of::<usize>());`) and explain the number before you change an answer. Writing `size_of::<...>() / W` as an answer passes the test and teaches nothing. See `24_ownership_model/ownership4` for the three-word `Vec` header, and `deep-dive/src/vtable_lab.rs` for a vtable built by hand."""
 
+[[exercises]]
+name = "layout2"
+dir = "41_memory_layout"
+hint = """
+Part A: each wrong answer is E0080 "evaluation panicked: Q_... is wrong", because the `const _: () = assert!(..);` checks run at compile time. They never print the real size. The sizes in bytes for a 64-bit target:
+```
+const Q_OPTION_U32: usize = 8;
+const Q_OPTION_NONZERO_U32: usize = 4;
+const Q_OPTION_F64: usize = 16;
+const Q_SAMPLE_C: usize = 12;
+const Q_SAMPLE_RUST: usize = 8;
+const Q_SAMPLE_PACKED: usize = 6;
+const Q_MESSAGE: usize = 1025;
+const Q_BOXED_MESSAGE: usize = 8;
+```
+Why, and whether each is GUARANTEED or only CURRENT RUSTC:
+- Q_OPTION_U32 = 8. Every bit pattern is a valid `u32`, so there is no niche, and `Option` needs a separate tag. The `u32` must stay 4-aligned, so the tag takes a 4-byte slot in front of it. Today rustc widens the tag itself to 4 bytes instead of leaving 3 bytes of padding. At least 8 is forced: 2^32 + 1 states need more than 4 bytes, and the size must be a multiple of the alignment (4). Exactly 8 is CURRENT RUSTC.
+- Q_OPTION_NONZERO_U32 = 4, GUARANTEED (`num::NonZero*` is in the `core::option` "Representation" table). `None` is stored as 0. This is why ids and handles are often `NonZero`.
+- Q_OPTION_F64 = 16. An `f64` has no invalid bit patterns (every NaN is a valid value), so the tag takes an 8-byte slot to keep the `f64` 8-aligned. The exact number is CURRENT RUSTC. On 32-bit x86 Linux (i686), `f64` is only 4-byte aligned and this is 12.
+- Q_SAMPLE_C = 12, GUARANTEED (the `repr(C)` algorithm): 1 byte, 3 of padding, 4, 1, then 3 of tail padding so that the size is a multiple of 4.
+- Q_SAMPLE_RUST = 8, CURRENT RUSTC. rustc reorders the fields to `value, tag, flags` (offsets 0, 4, 5) and adds 2 bytes of tail padding. `repr(Rust)` promises only aligned, non-overlapping fields, not an order.
+- Q_SAMPLE_PACKED = 6, GUARANTEED. `packed` sets the alignment to 1 and removes all padding, so `value` sits at offset 1, and `&s.value` is E0793.
+- Q_MESSAGE = 1025: a 1024-byte payload plus a 1-byte tag, with no padding because the alignment is 1. Every `Message`, even a `Ping`, costs 1025 bytes. The exact number is CURRENT RUSTC.
+- Q_BOXED_MESSAGE = 8, GUARANTEED by the nullable pointer optimization. The Nomicon's FFI chapter promises it for any enum with exactly two variants, one data-less and one holding a non-nullable pointer, so `Ping` is the null pointer. It is 4 on a 32-bit target. The trade-off: `Data` now costs a heap allocation. Clippy's `large_enum_variant` lint suggests this boxing once the largest variant is more than 200 bytes bigger than the second largest. The lint is allowed on `Message` so that its message does not give the answer away.
+
+Part B: E0080 "evaluation panicked: PacketHeader must be 16 bytes". Here is what `repr(C)` does in declaration order: `flag` at 0, 7 bytes of padding so that `id` lands on 8, `kind` at 16, `ok` at 18, then 1 byte of padding so that `len` lands on 20. That is 24 bytes, 8 of them padding. Sort the fields from the largest alignment to the smallest:
+```
+#[repr(C)]
+struct PacketHeader {
+    id: u64,
+    len: u32,
+    kind: u16,
+    flag: bool,
+    ok: bool,
+}
+```
+Now each field lands on an offset its alignment already divides (0, 8, 12, 14, 15), so the header is 16 bytes with no padding. `ok` before `flag` is fine too. These attempts are rejected:
+- `#[repr(C, packed)]`: it is 16 bytes, but the alignment guard fails and `&h.id` in the tests is E0793.
+- `repr(align(..))`: it only adds padding.
+- Other padding-free orders, such as smallest-first: the offset test fails.
+- Changing a field's type.
+- Deleting `#[repr(C)]`: current rustc would pick this same 16-byte order, but nothing would promise it to the C side. `on_packet` then fails with "`extern` fn uses type `PacketHeader`, which is not FFI-safe" (the `improper_ctypes_definitions` lint, denied on that function).
+In real code, keep a guard like these `const` asserts next to every wire-format type (see the `static_assertions` crate)."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
