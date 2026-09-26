@@ -1935,6 +1935,37 @@ that `commit` sets to `None` is an equivalent design without the flag.
 `rusqlite::Transaction` and `sqlx::Transaction` roll back on drop the same
 way."""
 
+[[exercises]]
+name = "raii3"
+dir = "39_drop_raii"
+hint = """
+E0597 "`roster` does not live long enough ... when `on_duty` is dropped and
+runs the `Drop` code for type `Vec`". Locals are dropped in reverse order, so
+`on_duty` (declared first) is dropped after `roster`, and every
+`Inspector::drop` would read a day count that is already freed. The drop
+check assumes a `Drop` impl may use every reference in the value, so what it
+borrows must STRICTLY outlive it. Declare the roster first:
+```
+fn run_shift(text: &str) -> usize {
+    let roster = Roster::parse(text);
+    let mut on_duty = Vec::new();
+    for days in roster.days_left() {
+        on_duty.push(Inspector(days));
+    }
+    on_duty.len()
+}
+```
+Now the inspectors retire, front to back, before "roster of N freed". Without
+`impl Drop for Inspector` the original order compiles, and so does
+`count_short`: std writes `unsafe impl<#[may_dangle] T, A: Allocator> Drop for
+Vec<T, A>`, a promise that `Vec::drop` never reads its elements, so dangling
+`&u8`s are harmless; dropping an `Inspector` element, though, reads through its
+reference. A `drop(on_duty)` at the end is not enough: if a `push` panicked,
+unwinding would still drop `roster` first, and the checker rejects that path
+too. Leaking the roster (`Box::leak`) compiles but loses the "freed" log line,
+and removing `Inspector`'s `Drop` loses the inspector lines. See the
+Rustonomicon's "Drop Check" chapter, where `Inspector` comes from."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
