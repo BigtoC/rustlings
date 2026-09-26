@@ -352,6 +352,8 @@ bin = [
   { name = "panic1_sol", path = "../solutions/49_panics/panic1.rs" },
   { name = "panic2", path = "../exercises/49_panics/panic2.rs" },
   { name = "panic2_sol", path = "../solutions/49_panics/panic2.rs" },
+  { name = "panic3", path = "../exercises/49_panics/panic3.rs" },
+  { name = "panic3_sol", path = "../solutions/49_panics/panic3.rs" },
   { name = "seams1", path = "../exercises/50_testing_seams/seams1.rs" },
   { name = "seams1_sol", path = "../solutions/50_testing_seams/seams1.rs" },
   { name = "seams2", path = "../exercises/50_testing_seams/seams2.rs" },

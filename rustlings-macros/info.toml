@@ -4084,6 +4084,50 @@ otherwise keep `lock().unwrap()` and let the panic spread. `parking_lot`'s
 locks never poison. The README covers `RwLock` (only a panicking writer
 poisons it), `Once`, `OnceLock` and `LazyLock`."""
 
+[[exercises]]
+name = "panic3"
+dir = "49_panics"
+hint = """
+The loop writes each converted entry and the running total into `self` as it
+goes, so a panic in `f`, or in an addition that overflows, unwinds past a
+ledger that is half converted and whose total disagrees with its entries. For
+the strong guarantee, do everything that can panic into locals, then commit
+with two assignments, which cannot panic:
+```
+fn apply(&mut self, mut f: impl FnMut(i64) -> i64) {
+    let mut entries = Vec::with_capacity(self.entries.len());
+    let mut total: i64 = 0;
+    for &entry in &self.entries {
+        let converted = f(entry);
+        total = total
+            .checked_add(converted)
+            .expect("the ledger total overflowed an i64");
+        entries.push(converted);
+    }
+    self.entries = entries;
+    self.total = total;
+}
+```
+An iterator version works too:
+`let entries: Vec<i64> = self.entries.iter().map(|&e| f(e)).collect();` and
+`let total: i64 = entries.iter().sum();`, then the two assignments (`sum`
+panics on overflow only where overflow checks are on, as in these debug-build
+tests; `checked_add` panics in every profile). These fail: recomputing the
+total at the end while still mutating in place (entries `[10, 2, 3]`);
+committing the entries before computing the total
+(`an_overflowing_total_changes_nothing`); `mem::take` of the entries followed
+by a `map` (a panic leaves the ledger empty); calling `f` twice, once to check
+and once to apply (`f_is_called_once_per_entry_in_order`); `wrapping_add` or
+`saturating_add` (the overflow must panic); and catching the panic inside
+`apply` without resuming it (the caller must see it). A snapshot plus
+`catch_unwind` and `resume_unwind`, or a drop guard that puts a snapshot back
+(`39_drop_raii/raii2`), also gives the strong guarantee and passes the tests,
+but it is more machinery for the same one copy of the entries, and the TODO
+asks for compute-then-commit. For a generic `T` whose `Drop` could panic, go
+one step further: take the old entries out with `mem::replace`, assign the
+total, and only then drop the old entries, so that even that panic comes
+after the commit."""
+
 # TRAITS & ABSTRACTION · Testing Seams: Trait-Injected Dependencies, Recording Mocks and Fake Clocks
 
 [[exercises]]
