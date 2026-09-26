@@ -316,6 +316,8 @@ bin = [
   { name = "contracts2_sol", path = "../solutions/44_trait_contracts/contracts2.rs" },
   { name = "contracts3", path = "../exercises/44_trait_contracts/contracts3.rs" },
   { name = "contracts3_sol", path = "../solutions/44_trait_contracts/contracts3.rs" },
+  { name = "deref1", path = "../exercises/45_sized_deref/deref1.rs" },
+  { name = "deref1_sol", path = "../solutions/45_sized_deref/deref1.rs" },
   { name = "linkedlist1", path = "../exercises/27_data_structures/linkedlist1.rs" },
   { name = "linkedlist1_sol", path = "../solutions/27_data_structures/linkedlist1.rs" },
   { name = "ringbuffer1", path = "../exercises/27_data_structures/ringbuffer1.rs" },

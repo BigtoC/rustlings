@@ -3151,6 +3151,28 @@ while let Some(Reverse(State { cost: TotalF64(cost), node })) = heap.pop() {
 ```
 An `Ord for State` that is just `self.cost.total_cmp(&other.cost)` compiles but keeps a max-heap. The early return then answers with the most expensive path: the direct-edge test gets 10 instead of 3. The Dijkstra example in the std `BinaryHeap` docs flips the comparison inside `cmp` instead. With f64 costs that is `other.cost.total_cmp(&self.cost).then_with(|| self.node.cmp(&other.node))`, together with hand-written `PartialEq`, `Eq` and `PartialOrd` that agree with it. Negating the costs also flips the order, but it hides the intent and cannot work for unsigned integer costs."""
 
+# TRAITS & ABSTRACTION · Deref, Borrow, Cow and ?Sized: Owned Values and Their Borrowed Views
+
+[[exercises]]
+name = "deref1"
+dir = "45_sized_deref"
+hint = """
+E0308 "mismatched types ... expected `&str`, found `&Username`", E0599 "no method named `len` found for struct `Username`" and E0614 "type `Username` cannot be dereferenced" all say the same thing: a `Username` is not text until you tell the compiler how to see it as text. Implement `Deref`, with the borrowed text as the target:
+```
+use std::ops::Deref;
+
+impl Deref for Username {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+```
+Now `&name` coerces to `&str` wherever a `&str` is already expected (arguments, annotated `let`s, struct fields, return values). It also works through `&Box<Username>` and `&Rc<Username>`, where the compiler inserts one `deref` per layer. Method lookup finds every `&self` method of `str`, so the odd E0599 on `Box<Username>`, which pointed at `ExactSizeIterator::len`, goes away as well. Coercion still does not reach generic parameters (`shout(&name)` needs `Username: AsRef<str>`), operators (`name == "root"`), `match` patterns or trait impls (`format!("{name}")` needs `Display`). In those places the tests write `&*name` themselves.
+Why `Target = str` and not `String`: `str` is the borrowed form, the same target `String` itself has, and it keeps the storage private (you could switch to `Box<str>` later without breaking callers). With `Target = String` the `match &*name` test stops compiling (E0308: the scrutinee becomes a `&String`), and the probe in `the_deref_target_is_str` would reject it too.
+Why no `DerefMut`: a `&mut str` allows `name.make_ascii_uppercase()`, which turns a valid lowercase name into an invalid one behind `Username::new`'s back. `a_username_is_read_only` fails if you add it. `Box::leak(self.0.clone().into_boxed_str())` compiles, but it leaks a copy on every deref, and the heap-pointer test fails. Inherent `len` / `starts_with` methods or an `AsRef<str>` impl alone do not make `greet(&name)` compile: only `Deref` drives coercion. Implementing `AsRef<str>` and `Display` in addition is fine and common for string newtypes. See `deref2` for where `Deref` goes wrong."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
