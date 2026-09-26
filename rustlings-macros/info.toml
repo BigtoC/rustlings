@@ -3816,6 +3816,62 @@ one behind `IndexMut`, counts from the moment it is taken.
   has a lifetime unrelated to its argument's: "lifetime may not live long
   enough", no error code (`33_closures/closure7`)."""
 
+# TRAITS & ABSTRACTION · Declarative Macros: Repetition, Single Evaluation, `$crate` and Code Generation
+
+[[exercises]]
+name = "macros5"
+dir = "48_macros_deep"
+hint = """
+Both macros have a single arm that matches an empty call, so every call with arguments stops at its first token: "no rules expected `a`" (no error code). rustc points at the first token that no arm accepts. At `cargo build` you only see the call in `status_names`; the tests add the rest.
+
+`count!` needs a recursive arm. A `tt` is one token or one whole bracketed group, so peel one off and count the rest:
+```
+macro_rules! count {
+    () => {
+        0usize
+    };
+    ($head:tt $($tail:tt)*) => {
+        1usize + count!($($tail)*)
+    };
+}
+```
+The expansion is `1usize + 1usize + .. + 0usize`, a constant expression, so it works in a `const` and as an array length. Each step is one level of macro expansion, so it stops at the recursion limit (128 by default) at around 128 tokens. The slice-length trick has a constant depth; the internal rule must come first, because `@unit x` also matches `$($x:tt)*`:
+```
+macro_rules! count {
+    (@unit $x:tt) => { () };
+    ($($x:tt)*) => { <[()]>::len(&[$(count!(@unit $x)),*]) };
+}
+```
+`${count($x)}` would be simpler, but metavariable expressions are unstable (E0658). A `$($x:ident)*` matcher fails on `(y z)` and `[1, 2]`.
+
+For `hashmap!`, add an arm for one or more pairs with an optional trailing comma, next to the empty one:
+```
+macro_rules! hashmap {
+    () => {
+        ::std::collections::HashMap::new()
+    };
+    ($($k:expr => $v:expr),+ $(,)?) => {{
+        let mut map = ::std::collections::HashMap::with_capacity(count!($($k)*));
+        $(
+            map.insert($k, $v);
+        )+
+        map
+    }};
+}
+```
+Each captured `$k` reaches `count!` as ONE opaque token tree, however long the expression, so `count!($($k)*)` counts pairs. (`count!($($k),*)` would count the commas too, and the capacity tests catch the oversized map.) Each `$k` and `$v` is pasted exactly once, in order, so every expression runs once and its value is moved into the map. The double braces make the expansion one block expression. The absolute path matters in the test module that has no `use` lines: a bare `HashMap` there is E0433 "cannot find type `HashMap` in this scope" (`macros7` explains why paths in an expansion resolve at the call site).
+
+Why keep the `()` arm: with one `$( .. ),*` arm for everything, an empty call expands to `let mut map = ..; map`, and rustc warns "variable does not need to be mutable" (`unused_mut`) at the caller. std's `vec!` has a separate `()` arm for the same reason. (The `maplit` crate names its map `_map` instead; `unused_mut` skips names that start with `_`.)
+
+Also correct:
+- `::std::collections::HashMap::from([$(($k, $v)),+])`, or collecting an array of pairs. `From` collects, and collecting into an empty map reserves room for the iterator's size hint, all `N` pairs, before the first insert, so it is pre-sized without `count!`.
+- `HashMap::new()` followed by `map.reserve(count!($($k)*))`.
+What fails:
+- no pre-sizing: five pairs with one key leave a map sized for the one entry it holds (`the_map_is_presized_for_every_pair_written`);
+- `with_capacity([$($k),+].len())`: that pastes every key a second time, so each key expression runs twice (the log test sees `k1` twice);
+- collecting all keys first and all values after: the log test sees `k1, k2, k3, v1, ..`;
+- `$v.clone()`: `Payload` is not `Clone` (E0599), and a macro has no business copying its arguments anyway."""
+
 # TRAITS & ABSTRACTION · Testing Seams: Trait-Injected Dependencies, Recording Mocks and Fake Clocks
 
 [[exercises]]
