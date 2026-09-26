@@ -244,6 +244,8 @@ bin = [
   { name = "cell2_sol", path = "../solutions/40_interior_mutability/cell2.rs" },
   { name = "cell3", path = "../exercises/40_interior_mutability/cell3.rs" },
   { name = "cell3_sol", path = "../solutions/40_interior_mutability/cell3.rs" },
+  { name = "cell4", path = "../exercises/40_interior_mutability/cell4.rs" },
+  { name = "cell4_sol", path = "../solutions/40_interior_mutability/cell4.rs" },
   { name = "dispatch1", path = "../exercises/32_dispatch/dispatch1.rs" },
   { name = "dispatch1_sol", path = "../solutions/32_dispatch/dispatch1.rs" },
   { name = "dispatch2", path = "../exercises/32_dispatch/dispatch2.rs" },

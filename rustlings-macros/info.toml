@@ -2093,6 +2093,34 @@ A non-capturing closure coerces to the `fn() -> T` that `LazyLock<T>` stores by 
 
 Which one when? `OnceLock` when the value comes from outside the static (set by `main` from a flag or a file), `LazyLock` when the static knows how to build its own value. A `fn config() -> &'static Config` over a `OnceLock::get_or_init` is the pre-1.80 spelling of the same idea, but the tests use `CONFIG` and `PORTS` directly. A global that keeps changing after startup needs a lock instead (`Mutex::new` is `const`). Compare with `Box::leak` in the "Leaking on Purpose" section of `25_lifetimes_deep`."""
 
+[[exercises]]
+name = "cell4"
+dir = "40_interior_mutability"
+hint = """
+`each_thread_numbers_its_own_jobs` fails with `left: 3, right: 1`: a `static AtomicU32` is ONE counter for the whole process, so the spawned thread carries on from the test thread's 2. The count describes the CURRENT thread, so give every thread its own with `thread_local!`. Only its own thread can ever reach it, so it does not need `Sync`, and a plain `Cell` is enough:
+```
+use std::cell::Cell;
+
+thread_local! {
+    static CALLS: Cell<u32> = const { Cell::new(0) };
+}
+
+fn bump() -> u32 {
+    let n = CALLS.get() + 1;
+    CALLS.set(n);
+    n
+}
+
+fn calls() -> u32 {
+    CALLS.get()
+}
+```
+`LocalKey<Cell<T>>` has `get` / `set` / `take` / `replace` as shortcuts for `CALLS.with(|c| ..)`. `LocalKey::update` is still unstable, but `CALLS.with(|c| { c.update(|n| n + 1); c.get() })` works. The `const { .. }` initializer lets std skip lazy initialization; without it clippy warns with `missing_const_for_thread_local`. Remove the now-unused atomic import.
+
+A `RefCell<u32>` or a thread-local `AtomicU32` would pass too, but both pay for checks that a single-owner counter never needs. A `Mutex<HashMap<ThreadId, u32>>` also passes and is worse on every count: each bump takes one global lock, and entries of finished threads are never freed. Resetting the shared counter whenever a new thread shows up fails the "main still reads 2 after join" check.
+
+The traps interviewers ask about: a thread pool reuses its threads, so thread-local state survives from one job to the next on the same worker, and a multi-threaded async runtime may move a task to another thread at any `.await` (tokio has `task_local!` for that). `cell3` shows the opposite case, one value shared by every thread."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
