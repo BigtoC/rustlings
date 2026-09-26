@@ -328,6 +328,8 @@ bin = [
   { name = "borrow1_sol", path = "../solutions/45_sized_deref/borrow1.rs" },
   { name = "cow1", path = "../exercises/45_sized_deref/cow1.rs" },
   { name = "cow1_sol", path = "../solutions/45_sized_deref/cow1.rs" },
+  { name = "sized1", path = "../exercises/45_sized_deref/sized1.rs" },
+  { name = "sized1_sol", path = "../solutions/45_sized_deref/sized1.rs" },
   { name = "builder1", path = "../exercises/47_type_level/builder1.rs" },
   { name = "builder1_sol", path = "../solutions/47_type_level/builder1.rs" },
   { name = "typestate1", path = "../exercises/47_type_level/typestate1.rs" },

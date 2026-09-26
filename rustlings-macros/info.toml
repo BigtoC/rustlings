@@ -3431,6 +3431,23 @@ fn normalize(s: &str) -> Cow<'_, str> {
 ```
 Write `Cow<'_, str>`, not `Cow<str>`. The short form compiles, but it triggers the `mismatched_lifetime_syntaxes` warning (Rust 1.89+). The tests reject: `Cow::Owned` for clean input (it allocates); `String::leak` or `Box::leak` for changed input (a leak, and not `Owned`); a single-space check (`s.contains(' ')` makes almost every input `Owned`); `.into_owned()` or `.to_string()` in `normalize` (it copies a borrowed result); and `split(' ')` plus `join` (it drops the spaces at the ends). One mistake they cannot see: building the collapsed `String` first and returning `Borrowed(s)` when it equals the input. That still allocates on every call, so decide before you allocate. A lazier single pass is fine too: `s.find("  ")` gives the first double space at `i`; copy `s[..=i]` and keep collapsing from `i + 1`."""
 
+[[exercises]]
+name = "sized1"
+dir = "45_sized_deref"
+hint = """
+Part A: E0277 "the size for values of type `str` cannot be known at compilation time", with the note "required by an implicit `Sized` bound in `join_all`". Called with a `&[&str]`, `join_all` infers `T = str`, because the type parameter is what the items point to. Every type parameter is `Sized` unless it opts out, and `join_all` only ever uses a `T` behind a `&T`, so it can opt out:
+```
+fn join_all<T: Display + ?Sized>(items: &[&T], sep: &str) -> String {
+```
+Now `T = dyn Display` works too, and so do sized types such as `i32` and `String`. `?Sized` only fits where `T` stays behind a pointer: `fn f<T: ?Sized>(x: T)` is E0277 again ("the size for values of type `T` cannot be known at compilation time", with the help "function arguments must have a statically known size"). Changing the parameter to `&[&dyn Display]`, or to `&[T]` with `T = &str`, avoids the bound but no longer compiles against the tests that name the type parameter (`join_all::<str>`, `join_all::<dyn Display>`).
+Part B: the same E0277, now "required by an implicit `Sized` bound in `trimmed`". An `impl Trait` argument is an anonymous type parameter with the same implicit bound. rustc suggests `&impl AsRef<str> + ?Sized`, which does not parse ("ambiguous `+` in a type"): the `+` could belong to the `&` or to the `impl`. Add the parentheses:
+```
+fn trimmed(text: &(impl AsRef<str> + ?Sized)) -> &str {
+    text.as_ref().trim()
+}
+```
+The explicit form `fn trimmed<T: AsRef<str> + ?Sized>(text: &T) -> &str` is the same function (and it can be turbofished). Taking `text: impl AsRef<str>` by value fails with E0106, because the returned slice would borrow a parameter that is dropped when the call ends. `text: &str` rejects the `&Label` (it has no `Deref`), and `text: &dyn AsRef<str>` cannot take a `&str`: turning a `str` into a `dyn` needs `str: Sized` (E0277). Copying the result (`to_string` plus `Box::leak`) fails the pointer checks. The README table lists every place the implicit bound applies; `Self` in a trait is the one exception."""
+
 # TRAITS & ABSTRACTION · Builders and Typestate: From Run-Time Checks to Compile-Time Guarantees
 
 [[exercises]]
