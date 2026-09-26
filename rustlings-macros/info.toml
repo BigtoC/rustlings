@@ -5068,6 +5068,72 @@ fn union(&mut self, a: usize, b: usize) -> bool {
 ```
 Always hanging `a`'s root under `b`'s (or the reverse) builds a 4_095-deep chain in `unions_in_a_line_keep_every_tree_shallow`, in one of the two argument orders. Taking `self.parent[a]` as the root instead of calling `find` fails `union_reports_whether_it_merged`: once two sets of 2 merge, a node sits two links below its root, and `union` merges a set with itself. Comparing `self.size[a]` with `self.size[b]` reads the out-of-date sizes of non-roots and fails a union-by-size test. Returning `true` for two nodes of one set breaks the given Kruskal: `mst_weight` then counts a self-loop as a merge and reports a disconnected graph as connected. Union by rank is fine in general, but this `Dsu` keeps sizes, and `set_size` reads them. Related: `59_arena` (index links), `44_trait_contracts/contracts3` (`Reverse` and a min-heap in Dijkstra's algorithm), and `graph2` for depth-first search."""
 
+[[exercises]]
+name = "graph2"
+dir = "62_graphs"
+hint = """
+E0502 "cannot borrow `*self` as mutable because it is also borrowed as immutable": `for &v in &self.adj[start]` keeps the field `self.adj` borrowed for the whole loop, and `self.dfs(v)` needs `&mut self`, which borrows every field, `adj` included. rustc does not look into `dfs` to see that it only writes `seen`; it trusts the signature, and a `&mut self` method could push onto `self.adj[start]` and invalidate the loop. `has_cycle_directed` is empty: E0308 "mismatched types", expected `bool`, found `()`.
+
+dfs: keep your own stack and use the fields directly inside the loop. A shared borrow of `self.adj` and a write to `self.seen` borrow two different places, so they do not conflict (a split borrow, `37_borrowck_errors/borrowck1`). Mark a node when it is pushed, so it is counted once:
+```
+fn dfs(&mut self, start: usize) -> usize {
+    if self.seen[start] {
+        return 0;
+    }
+    self.seen[start] = true;
+    let mut marked = 1;
+    let mut stack = vec![start];
+    while let Some(u) = stack.pop() {
+        for &v in &self.adj[u] {
+            if !self.seen[v] {
+                self.seen[v] = true;
+                marked += 1;
+                stack.push(v);
+            }
+        }
+    }
+    marked
+}
+```
+Marking and counting on pop (skip a node that is already seen) is fine too. The split-borrow recursion, `fn visit(adj: &[Vec<usize>], seen: &mut [bool], u: usize) -> usize` called as `visit(&self.adj, &mut self.seen, start)`, compiles and copies nothing. It is the right fix when the depth is known to be small, but here it aborts the test binary with "has overflowed its stack" on the 200_000-node path. So does recursing over `self.adj[start].clone()`, and so does taking the list out with `std::mem::take(&mut self.adj[start])` and putting it back after the recursive loop. Cloning a neighbor list inside the loop above passes the tests, but pays an allocation per node for nothing.
+
+has_cycle_directed: three colors, and a stack of `(node, next edge index)` frames, so a node turns black only when its last edge is done (where a recursive DFS would return):
+```
+fn has_cycle_directed(&self) -> bool {
+    let mut color = vec![Color::White; self.len()];
+    let mut stack: Vec<(usize, usize)> = Vec::new();
+    for root in 0..self.len() {
+        if color[root] != Color::White {
+            continue;
+        }
+        color[root] = Color::Gray;
+        stack.push((root, 0));
+        while let Some(frame) = stack.last_mut() {
+            let (u, next_edge) = *frame;
+            match self.adj[u].get(next_edge) {
+                Some(&v) => {
+                    frame.1 += 1;
+                    match color[v] {
+                        Color::Gray => return true,
+                        Color::White => {
+                            color[v] = Color::Gray;
+                            stack.push((v, 0));
+                        }
+                        Color::Black => {}
+                    }
+                }
+                None => {
+                    color[u] = Color::Black;
+                    stack.pop();
+                }
+            }
+        }
+    }
+    false
+}
+```
+`frame` borrows `stack` mutably, but its last use is `frame.1 += 1`, so the `stack.push` after it compiles. These all fail: a visited set ("seen before means a cycle") fails the diamond; graying nodes when they are pushed fails `0 -> 1, 0 -> 2, 2 -> 1`; blackening a node as soon as its neighbors are pushed misses `0 -> 1 -> 2 -> 0`; starting only from node 0 misses a cycle elsewhere; a recursive three-color DFS overflows the stack on the 200_000-node tests. Searching from every node for a way back to itself is O(V * (V + E)), about 2 * 10^10 steps on the 200_000-node path. Two alternatives pass: a stack of `(node, exiting)` markers (gray on entry, black when the marker comes off), and Kahn's algorithm (graph1's `topo_order`: there is a cycle exactly when some node never reaches in-degree 0). In an undirected graph every edge would look like a cycle this way: skip the edge back to the parent, or use union-find. Related: `61_trees` (traversal with an explicit stack)."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
