@@ -4778,6 +4778,46 @@ where
 ```
 Wrong turns the tests reject at compile time: `key: &str` (then `Vec<u8>` and `u32` keys cannot be looked up), `Q: ToOwned<Owned = K>` with `key.to_owned()` (it allocates, and a `str` becomes a `String`, not an `Arc<str>`: E0271), `K: From<&Q>` (there is no `From<&u32>` for `u32`), `K: AsRef<Q>` with a scan (O(n), and neither `u32` nor `String` is `AsRef` of itself: E0277), and a `peek(&mut self)`, or one that calls `get` (E0596 through the `&LruCache` and the `RwLock` read guard). At run time, a `peek` that scans `nodes` or walks the list fails `get_and_peek_are_one_hash_lookup_not_a_scan`. Because `get` needs `&mut self`, a cache behind a `RwLock` takes the write lock for every lookup that counts as a use; the README covers what production caches do about that."""
 
+# MODULE 2 · Binary Search Trees: Link Cursors, a Lazy In-Order Iterator, No Recursion
+
+[[exercises]]
+name = "bst1"
+dir = "61_trees"
+hint = """
+The empty bodies are rejected twice with E0308 "mismatched types" (expected `bool`, found `()`).
+
+`insert` walks a cursor that points at a LINK (`&mut Option<Box<Node>>`), not at a node. When the cursor reaches an empty link, that link is where the new leaf belongs, so one assignment through the cursor hangs it there:
+```
+fn insert(&mut self, key: i32) -> bool {
+    let mut cur = &mut self.root;
+    while let Some(node) = cur {
+        match key.cmp(&node.key) {
+            Ordering::Less => cur = &mut node.left,
+            Ordering::Greater => cur = &mut node.right,
+            Ordering::Equal => return false,
+        }
+    }
+    *cur = Some(Box::new(Node::new(key)));
+    self.len += 1;
+    true
+}
+```
+(with `use std::cmp::Ordering;` at the top). `cur = &mut node.left` reborrows THROUGH the old cursor and overwrites it, and assigning to `cur` kills the loans on the old `*cur` (problem case #4 of the NLL RFC), so there is never a second live `&mut` into the tree. `return false` returns no borrow, so it is fine inside the loop; returning `cur` itself from inside the loop is part 4's E0499. `contains` is the same walk with a shared cursor:
+```
+fn contains(&self, key: i32) -> bool {
+    let mut cur = self.root.as_deref();
+    while let Some(node) = cur {
+        match key.cmp(&node.key) {
+            Ordering::Less => cur = node.left.as_deref(),
+            Ordering::Greater => cur = node.right.as_deref(),
+            Ordering::Equal => return true,
+        }
+    }
+    false
+}
+```
+`if key < node.key { .. } else if key > node.key { .. } else { .. }` works just as well as `cmp`. What fails: a recursive helper (the 200_000-deep test aborts the whole run with "thread ... has overflowed its stack"), a `contains` that scans the whole tree instead of one path (the test with a key hidden off the search path), sending equal keys to the right (the duplicate tests), comparing with `key - node.key` (it overflows once `i32::MIN` is the root, and debug builds panic), and forgetting `self.len += 1`. The follow-up interviewers ask: both operations are O(h), and h is n for a sorted insertion order (see the degenerate-tree test), which is why balanced trees and std's `BTreeMap` exist."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
