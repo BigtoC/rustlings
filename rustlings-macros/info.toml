@@ -4711,6 +4711,50 @@ Mistakes the tests catch:
 
 Ending the scope after phase 1 and running phase 2 in a second scope also passes, since the end of a scope is a barrier, but it respawns every thread. The `Barrier` version scales to many phases, and `BarrierWaitResult::is_leader()` lets one thread do one-off work between them. Memory orderings are covered in `36_atomics`; blocking coordination continues in `52_condvar`."""
 
+# MODULE 4 · Condition Variables: Blocking Queues and a Semaphore
+
+[[exercises]]
+name = "condvar1"
+dir = "52_condvar"
+hint = """
+`pop`'s body is empty, so it evaluates to `()` where a `T` is expected: E0308 "mismatched types" ("implicitly returns `()` as its body has no tail or `return` expression"). Once it has a body, the tests check FIFO order, that a consumer on an empty queue sleeps (counted in `waiters`, with the lock released) until a push, and that a wakeup WITHOUT an item sends it back to sleep. The test fakes that wakeup by calling `notify_all()` without pushing, which is exactly what a spurious or stolen wakeup looks like from inside `wait`.
+
+Wait in a `while` loop, and count yourself in around each `wait`:
+
+```rust
+fn pop(&self) -> T {
+    let mut inner = self.inner.lock().unwrap();
+    while inner.items.is_empty() {
+        inner.waiters += 1;
+        inner = self.not_empty.wait(inner).unwrap();
+        inner.waiters -= 1;
+    }
+    inner
+        .items
+        .pop_front()
+        .expect("the loop exits only when an item is queued")
+}
+```
+
+`wait` unlocks the mutex and sleeps in one atomic step, and locks it again before it returns, so no push can slip in between your check and your sleep. Every change to `waiters` happens under the same lock that `push` reads it with, so `push` never misses a sleeper, and nobody ever sees the brief dip between `-= 1` and the next `+= 1`.
+
+The same loop, packaged with `wait_while` (it keeps waiting while the closure returns `true`):
+
+```rust
+let mut inner = self.inner.lock().unwrap();
+inner.waiters += 1;
+let mut inner = self
+    .not_empty
+    .wait_while(inner, |i| i.items.is_empty())
+    .unwrap();
+inner.waiters -= 1;
+inner.items.pop_front().unwrap()
+```
+
+When an item is already there, the count goes up and down inside one critical section, so nobody can observe it.
+
+Wrong answers the tests catch: `if` instead of `while` (the bare `notify_all` test), not counting yourself in (then `push` never notifies, and the watchdog gives up after 20s), counting in but never out (`waiters()` is not 0 after `pop` returns), resetting the count to 0 or setting it to 1 instead of counting, LIFO order, and spinning while holding the lock (state is read with `try_lock`, so the test fails instead of hanging). `29_async_runtime/runtime2` has the same "look again after every wakeup" loop around `thread::park`, and Rust Atomics and Locks, chapter 9 ("Condition Variable", "Avoiding Syscalls") builds a condvar that counts its waiters to skip the wake syscall, as this `push` does."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
