@@ -5380,3 +5380,56 @@ misses `(0, 1)` in `[1, 4, i32::MAX - 1, i32::MAX]`; `saturating_add` makes
 leaves the `i32` range around to the other sign, so the pointers move the wrong
 way (that is what the original code does in a release build). Integer overflow
 basics are in `31_debugging/debugging2`."""
+
+[[exercises]]
+name = "window2"
+dir = "63_slices_strings"
+hint = """
+The byte scan treats every byte as a character. "éã" is the bytes C3 A9 C3 A3:
+the repeated lead byte C3 moves the window's start to byte 1, inside 'é', and
+`&s[best]` panics with "start byte index 1 is not a char boundary; it is inside
+'é' (bytes 0..2 of string)". It also measures windows in bytes, so it would
+prefer "🦀🐍" (2 chars, 8 bytes) to "🐍abc" (4 chars, 7 bytes).
+
+Step through `char_indices()`, which yields `(byte_offset, char)` with every offset
+on a char boundary, and remember for each char its position counted in chars and
+the byte offset just past it:
+```
+use std::collections::HashMap;
+
+fn longest_unique_substring(s: &str) -> &str {
+    let mut last_seen: HashMap<char, (usize, usize)> = HashMap::new();
+    let (mut start, mut start_pos) = (0, 0);
+    let (mut best, mut best_len) = (0..0, 0);
+    for (pos, (i, c)) in s.char_indices().enumerate() {
+        let end = i + c.len_utf8();
+        if let Some((prev_pos, prev_end)) = last_seen.insert(c, (pos, end))
+            && prev_pos >= start_pos
+        {
+            (start, start_pos) = (prev_end, prev_pos + 1);
+        }
+        let len = pos + 1 - start_pos;
+        if len > best_len {
+            (best, best_len) = (start..end, len);
+        }
+    }
+    &s[best]
+}
+```
+`insert` returns the previous entry, so each char costs one hash lookup. The let
+chain's `prev_pos >= start_pos` stops an occurrence that is already behind the
+window from moving the start back ("abba" must give "ab", "tmmzuxt" must give
+"mzuxt"). `len > best_len`, not `>=`, keeps the leftmost window on a tie ("pwwkew"
+gives "wke", not "kew").
+
+Other correct shapes: a `HashMap<char, usize>` of byte offsets plus a char counter
+(subtract `s[start..new_start].chars().count()` when the start jumps; each char
+leaves the window once, so it stays O(n)); or collect `char_indices()` into a
+`Vec`, run the window over char positions, and turn the best range back into byte
+offsets at the end.
+
+What fails: `s.get(best).unwrap_or("")`, or rounding the offsets with
+`floor_char_boundary` / `ceil_char_boundary`, hides the panic but keeps the wrong
+window; comparing `end - start` (bytes) instead of a length in chars; `>=` for
+ties; returning `Box::leak(text.into_boxed_str())` fails the address check,
+because the answer must borrow the input."""
