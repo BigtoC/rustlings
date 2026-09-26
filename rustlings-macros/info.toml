@@ -6695,6 +6695,63 @@ first_true(heaviest, total, fits)
 never looks at single packages then says a ship smaller than the heaviest package
 fits. Summing in `u32` overflows on three `u32::MAX` packages."""
 
+# MODULE 5 · Parsing: Borrowed Tokens, Recursive Descent, Never-Panicking Evaluation, an AST
+
+[[exercises]]
+name = "parse1"
+dir = "64_parsing"
+hint = """
+The body is empty, so rustc reports E0308 "mismatched types": expected `Option<Result<(usize, Token<'a>), LexError>>`, found `()`.
+
+Skip the whitespace, look at the first other character, and let a small helper consume a run of characters and say where the run ends. `next_if` consumes a character only when it matches, so the first one that doesn't is still waiting in the iterator, and its offset (or `src.len()` at the end of the input) is where the token ends:
+```
+use std::num::IntErrorKind;
+
+impl<'a> Lexer<'a> {
+    fn eat_while(&mut self, pred: impl Fn(char) -> bool) -> usize {
+        while self.chars.next_if(|&(_, c)| pred(c)).is_some() {}
+        self.chars.peek().map_or(self.src.len(), |&(i, _)| i)
+    }
+}
+
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Result<(usize, Token<'a>), LexError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (start, c) = self.chars.find(|&(_, c)| !c.is_whitespace())?;
+        let token = match c {
+            '+' => Token::Plus,
+            '-' => Token::Minus,
+            '*' => Token::Star,
+            '/' => Token::Slash,
+            '(' => Token::LParen,
+            ')' => Token::RParen,
+            '0'..='9' => {
+                let end = self.eat_while(|c| c.is_ascii_digit());
+                return Some(match self.src[start..end].parse() {
+                    Ok(n) => Ok((start, Token::Num(n))),
+                    Err(e) => match e.kind() {
+                        IntErrorKind::PosOverflow => Err(LexError::NumberTooLarge { pos: start }),
+                        kind => unreachable!("ASCII digits failed with {kind:?}"),
+                    },
+                });
+            }
+            c if is_ident_start(c) => {
+                let end = self.eat_while(is_ident_continue);
+                Token::Ident(&self.src[start..end])
+            }
+            ch => return Some(Err(LexError::UnexpectedChar { ch, pos: start })),
+        };
+        Some(Ok((start, token)))
+    }
+}
+```
+(`eat_while` can also go into the existing `impl<'a> Lexer<'a>` block.) `find` consumes the whitespace AND the first other character, and its `?` ends the iteration when only whitespace was left. `&self.src[start..end]` is a `&'a str` even though `next` borrows `self` only for the call: the slice is taken through the `&'a str` field, so it borrows the source, not the lexer (`25_lifetimes_deep/lifetimes6`). Both offsets come from `char_indices`, so the slice cannot panic. The bad character in the last arm is already consumed, and that is what makes the lexer carry on after an error.
+
+Numbers: a non-empty run of ASCII digits can only fail to parse by overflowing, so `PosOverflow` is the one reachable `IntErrorKind` (`.map_err(|_| LexError::NumberTooLarge { pos: start })` passes too). Accumulating the digits with `checked_mul(10)` and `checked_add(digit)` also works; leading zeros never overflow either way. Tracking the end yourself with `end = i + c.len_utf8()` for the last consumed char is fine as well.
+
+What fails: positions from `.chars().enumerate()` (character counts, not byte offsets: the `$` in "é + $" is at byte 5); `&self.src[start..start + n]` with `n` counted in chars (the wrong slice, or a char-boundary panic); `Box::leak(name.to_string().into_boxed_str())` (the address check); `parse().unwrap()`, `parse::<u64>()` plus `as i64`, or a saturated `i64::MAX` for 9223372036854775808; giving up in the middle of an overlong literal (the rest of its digits must not come back as a second number); `c.is_numeric()` for digits (it accepts '١' and '½', which `parse` rejects); `is_ascii_alphabetic` for names ("héllo" falls apart into three items); `is_ascii_whitespace` (U+3000 IDEOGRAPHIC SPACE is whitespace too); peeking at a character without consuming it (the same item forever: the tests give up after `src.len()` items); returning `None` for good after the first error. Real lexers carry spans too: LALRPOP's custom lexers yield `(start, token, end)` triples."""
+
 # MODULE 5 · Checked Math: Overflow-Safe `mul_div`, Rounding Direction, Fixed Point and Determinism
 
 [[exercises]]
