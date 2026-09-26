@@ -5766,3 +5766,74 @@ Wrong fixes the tests catch:
 std has no `From<usize> for u64`, which is why the length goes through `try_from`. Don't write `name.len().to_le_bytes()` either. It is 8 bytes only on 64-bit targets and 4 on 32-bit ones, which is exactly the platform dependence a digest must not have, and no test on a 64-bit machine can catch it.
 
 In production, the hash would be SHA-256 or BLAKE3 from a crate, and the encoding a canonical binary format such as Borsh or SSZ. The rules stay the same. For `as` and `TryFrom`, see `23_conversions/conversions1` and `conversions4`."""
+
+# MODULE 5 · Code Review: Find the Bugs, Then Fix the Idioms
+
+[[exercises]]
+name = "review1"
+dir = "67_code_review"
+hint = """
+Seven tests fail, one per bug, and each one exercises a single function. Read this hint one level at a time, and stop as soon as you know enough to go back to the code.
+
+LEVEL 1, where to look:
+- `large_transfer_does_not_crash_and_charges_the_exact_fee`: the fee line in `transfer`.
+- `history_with_a_long_non_english_memo_does_not_crash`: the memo preview in `history`.
+- `legacy_app_never_shows_a_wrong_balance`: the last line of `legacy_balance`.
+- `statement_is_sorted_by_account_name`: `statement`, and the type it iterates over.
+- `observer_can_read_balances_during_a_transfer`: the end of `transfer`, where the observers are called.
+- `transfer_of_exactly_the_limit_goes_through`: the limit check in `transfer`.
+- `typo_in_an_admin_command_is_an_error_not_a_crash`: the two `parse()` calls in `apply`.
+
+LEVEL 2, what kind of bug:
+- The fee: `amount * self.fee_bps` overflows `u64` once `amount` is above `u64::MAX / fee_bps` (about 6.1e17 at 30 bps). A debug build panics with "attempt to multiply with overflow". A release build wraps and charges a far too small fee (`31_debugging/debugging2`, `66_checked_math/checkedmath1`).
+- The memo: `len()` counts BYTES and `[..16]` slices at byte 16, which panics with "end byte index 16 is not a char boundary; it is inside 'ü' (bytes 15..17 of string)". Short non-ASCII memos also get cut when they should not be (`63_slices_strings/window2`).
+- The legacy balance: `as u32` keeps the low 32 bits and never fails, so 2^32 becomes 0 and 5 billion becomes 705_032_704 (`66_checked_math/checkedmath4`).
+- The statement: a `HashMap` iterates in an arbitrary order that changes from run to run. With 12 accounts there are 12! orders, so a random order passes by luck about once in 479 million runs. `66_checked_math/checkedmath4` has the same bug in a digest.
+- The observer: the `RefMut` from `borrow_mut()` is still alive while the observers run, so an observer that calls `ledger.balance(..)` (a `borrow()`) panics with "RefCell already mutably borrowed". The borrow checker cannot see this, because `RefCell` checks at run time (`31_debugging/debugging4` and `debugging6`).
+- The limit: `>=` refuses the limit itself, which the spec allows.
+- The console: `parse().unwrap()` panics on "12x", on "-5" and on one past `u64::MAX` (`35_error_design`).
+
+LEVEL 3, the fixes.
+
+The fee: widen to `u128`, where the product cannot overflow, then narrow back with a check. The fee is at most `amount`, because `fee_bps <= 10_000`:
+```
+let fee = u128::from(amount) * u128::from(self.fee_bps) / 10_000;
+let fee = u64::try_from(fee).expect("the fee is at most `amount`");
+```
+Staying in `u64` is exact too: `amount / 10_000 * self.fee_bps + amount % 10_000 * self.fee_bps / 10_000`. These are not fixes: `checked_mul` (it refuses a legal transfer), `saturating_mul` or `wrapping_mul` (a wrong fee), `f64` (inexact above 2^53), and dividing first, whether by 10_000 or by 100 twice (it drops part of the remainder, so `fee_is_rounded_down` or the large-transfer test fails).
+
+The memo: cut at the byte offset of the 17th character, if there is one:
+```
+let memo = match record.memo.char_indices().nth(16) {
+    Some((cut, _)) => format!("{}...", &record.memo[..cut]),
+    None => record.memo.clone(),
+};
+```
+`floor_char_boundary(16)` (stable since 1.91) stops the panic, but it still counts bytes, so it shows fewer than 16 characters, and the test catches that.
+
+The legacy balance: `try_from` fails exactly when the value does not fit:
+```
+u32::try_from(balance).map_err(|_| LedgerError::TooLargeForLegacy { balance })
+```
+`unwrap_or(u32::MAX)` or `balance.min(..)` would still show a wrong number.
+
+The statement: make `Books::accounts` a `BTreeMap<String, Account>` (and import `std::collections::BTreeMap`). It iterates in key order and has the same `get`, `get_mut`, `insert` and `contains_key`. Collecting the entries and sorting them by NAME works too. Sorting the formatted LINES does not: "bob2: 200" sorts before "bob: 500", because the digit 2 comes before ':'.
+
+The observer: end the borrow before calling code you don't control. Right after `books.history.push(..)`, add:
+```
+drop(books);
+```
+(or do the whole update in a block of its own). Calling the observers before the update, or making `balance` return `None` while the books are borrowed, fails the test: observers must see the new balances.
+
+The limit: `amount > limit`. `amount >= limit + 1` means the same thing but overflows for a limit of `u64::MAX`, and the test has one.
+
+The console: turn the parse error into the error the spec names, and return it with `?`:
+```
+fn parse_amount(word: &str) -> Result<u64, LedgerError> {
+    word.parse()
+        .map_err(|_| LedgerError::BadAmount(word.to_string()))
+}
+```
+Then call `parse_amount(amount)?` in both arms. `unwrap_or(0)` would quietly deposit or transfer 0.
+
+In the interview, finish by ranking the findings and saying how CI would have caught each one: a boundary test per bug, plus the opt-in clippy lints `arithmetic_side_effects`, `string_slice`, `cast_possible_truncation` and `unwrap_used`. No lint finds the limit, statement-order or `RefCell` bug. Only tests do, and for the `RefCell` bug only a test whose observer calls back into the ledger."""
