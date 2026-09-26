@@ -1821,6 +1821,34 @@ assignment drops "old" on the spot, and "b" now belongs to `_moved`, declared
 after `_slot`, so it goes before "new". The README has a cheat sheet, and the
 Reference's "Destructors" chapter has the full rules."""
 
+[[exercises]]
+name = "drop2"
+dir = "39_drop_raii"
+hint = """
+Each `quiz_*` test fails until its constant matches the real log exactly. A
+temporary is dropped at the end of the smallest enclosing temporary scope: a
+statement, an `if` or `while` condition, and (since edition 2024) a block's
+tail expression. Temporaries that end at the same point go in reverse order of
+creation. The exception is lifetime extension: `let x = &temp;` makes the
+temporary live until the end of the block, like a hidden local declared at
+that statement:
+```
+const S_STATEMENT: &[&str] = &["right", "left", "next statement"];
+const S_BORROWED: &[&str] = &["end of body", "local", "borrowed"];
+const S_TAIL: &[&str] = &["tail", "local", "after the block"];
+const S_IF_CONDITION: &[&str] = &["condition", "then block", "after the if"];
+```
+In edition 2021 `S_TAIL` would be `["local", "tail", "after the block"]`: the
+tail temporary lived to the end of the enclosing `let`, which is why
+`{ let c = RefCell::new(..); c.borrow().len() }` used to be E0597. To see it
+without editing the course's `Cargo.toml` (other exercises need 2024), run
+`rustc --edition 2021 --test exercises/39_drop_raii/drop2.rs -o target/drop2 && target/drop2`
+from the rustlings directory. A method call on a temporary is not extended:
+`let s = String::from("hi").as_str();` is E0716 as soon as `s` is used
+(`37_borrowck_errors/borrowck2`). `match`, `if let` and `while let`
+scrutinees follow other rules again; they keep a guard alive through the arms
+or the body, which `31_debugging/debugging6..8` turns into real bugs."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
