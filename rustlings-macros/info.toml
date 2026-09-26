@@ -4681,6 +4681,36 @@ Joining each handle inside the loop, or putting a `Mutex` around the slice, make
 
 The overflow in `a_panic_in_a_worker_reaches_the_caller` panics inside a worker, and `thread::scope` then panics after all threads are joined ("a scoped thread panicked"). Don't switch to `wrapping_mul` or `saturating_mul`, and don't join the handles and throw the `Err` away: either one makes that test fail. For E0499 and `split_at_mut` in single-threaded code, see `37_borrowck_errors/borrowck1`."""
 
+[[exercises]]
+name = "scope3"
+dir = "51_scoped_threads"
+hint = """
+The tests fail their `assert_eq!` with "Every chunk after the first starts from 0" because phase 2 is missing: each worker has scanned only its own chunk. Phase 2 adds the totals of chunks `0..i` to every element of chunk `i`. It may read those totals only after every worker has published its own. That calls for one `Barrier` shared by exactly the workers that were spawned, which is `chunk_count`, not `n`:
+```
+use std::sync::Barrier;
+
+// before `thread::scope`, next to `totals`:
+let barrier = Barrier::new(chunk_count);
+let barrier = &barrier;
+
+// inside each worker, after `totals[i].store(..)`:
+barrier.wait();
+let offset: u64 = totals[..i].iter().map(|t| t.load(Ordering::Relaxed)).sum();
+for x in chunk.iter_mut() {
+    *x += offset;
+}
+```
+Without the `let barrier = &barrier;` line, the `move` closures try to move the barrier itself: E0382 "use of moved value: `barrier`" (value moved into closure here, in previous iteration of loop).
+
+Mistakes the tests catch:
+- `Barrier::new(n)` blocks forever whenever there are fewer chunks than `n` (9 elements on 4 threads make only 3 chunks). The 20 s watchdog reports that as "did not finish".
+- A `Barrier` created inside each worker is a separate barrier per thread, so with two or more chunks it never releases anyone.
+- Waiting before your own `store`, or not waiting at all, lets a worker read a total that is still 0. The slow-chunk tests make one total arrive late on purpose, and the many-chunk tests catch the rest.
+
+`Relaxed` loads are enough because `wait` goes through the barrier's internal `Mutex`, which orders every store made before the wait before every load made after it. `Arc<Barrier>` also works but isn't needed inside a scope.
+
+Ending the scope after phase 1 and running phase 2 in a second scope also passes, since the end of a scope is a barrier, but it respawns every thread. The `Barrier` version scales to many phases, and `BarrierWaitResult::is_leader()` lets one thread do one-off work between them. Memory orderings are covered in `36_atomics`; blocking coordination continues in `52_condvar`."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
