@@ -3728,6 +3728,94 @@ method was found for `RequestBuilder<HasUrl>`". The planned `api-surface-lab`
 turns that into a `compile_fail` doctest. For choosing a `PhantomData` marker
 with the right variance and auto traits, see the planned `38_variance`."""
 
+# QUIZ 4 · Method Resolution and Borrowck Verdicts
+
+[[exercises]]
+name = "quiz4"
+dir = "quizzes"
+hint = """
+Part A first: the Part B tests cannot run until the file compiles.
+
+E0034 "multiple applicable items in scope": `Human` has no inherent `fly`, and
+its `Pilot` and `Wizard` impls both provide one, so `h.fly()` cannot choose.
+Name the trait (and, fully qualified, the type):
+```
+fn cockpit_announcement(h: &Human) -> String {
+    <Human as Pilot>::fly(h)
+}
+```
+`Pilot::fly(h)` works too. rustc's help suggests `Pilot::fly(&h)`, which fails
+here with E0277 "the trait bound `&Human: Pilot` is not satisfied": `h` is
+already a `&Human`, so `&h` is a `&&Human`, and with only the trait named,
+rustc infers `Self` from that argument as `&Human`. A path call gets none of
+the receiver adjustments of a method call. (`<Human as Pilot>::fly(&h)` does
+compile: with the type named, the parameter type `&Human` is known, and deref
+coercion fixes the argument.) Had `Human` an inherent `fly`, there would be no
+error at all: `h.fly()` would silently run the inherent one.
+
+E0790: `baby_name` has no `self` and does not return `Self`, so
+`Animal::baby_name()` gives rustc nothing to infer the type from. Name the impl
+through the type parameter:
+```
+fn baby_name_of<T: Animal>() -> String {
+    <T as Animal>::baby_name() // or the short form T::baby_name()
+}
+```
+rustc's help offers `<Dog as Animal>` and `<Cat as Animal>`: both compile, both
+ignore `T`, and the tests (with a `Duck` of their own) catch them.
+`Dog::baby_name()` is wrong as well: on a concrete type path the inherent
+function comes first and says "Spot". Inside the generic function rustc sees
+only `T`'s bounds and resolves the call once for the whole body, so
+`baby_name_of::<Dog>()` gives "puppy". `Default::default()` rarely needs any of
+this because `Self` is its return type, so the expected type pins it down.
+
+Part B:
+```
+const Q1: Verdict = Verdict::Compiles;
+const Q2: Verdict = Verdict::E0499;
+const Q3: Verdict = Verdict::E0502;
+const Q4: Verdict = Verdict::Compiles;
+const Q5: Verdict = Verdict::E0502;
+const Q6: Verdict = Verdict::Compiles;
+const Q7: Verdict = Verdict::Compiles;
+const Q8: Verdict = Verdict::E0716;
+const Q9: Verdict = Verdict::E0499;
+const Q10: Verdict = Verdict::LifetimeMayNotLiveLongEnough;
+```
+The rule behind Q1 to Q6: rustc makes an implicit `&mut` borrow two-phase in
+three places only (rustc dev guide, RFC 2025): the auto-ref of a method call's
+receiver, the implicit reborrow of a `&mut` passed as an argument, and the left
+side of an overloaded compound assignment (`x += y` on a non-primitive `x`).
+Until the call happens such a borrow is only reserved: the place may be read,
+but not written or mutably borrowed again. A `&mut` you write yourself, and the
+one behind `IndexMut`, counts from the moment it is taken.
+
+- Q1: `v.push(..)` auto-refs `v` two-phase, and `v.len()` only reads.
+- Q2: `v.pop()` is a second `&mut v` during the reservation (E0499). Pop into a
+  local first.
+- Q3: on a `Vec`, `v[i] = 7` is `*IndexMut::index_mut(&mut v, i) = 7`, and that
+  `&mut v` is taken before the index runs and is not two-phase, so `v.len()` is
+  E0502. Write `let last = v.len() - 1; v[last] = 7;` or
+  `*v.last_mut().unwrap() = 7`. The right-hand side is never the problem: `=`
+  evaluates it first, so `v[0] = v.len()` compiles.
+- Q4: array and slice indexing is built into the language, with no `IndexMut`
+  call, so no `&mut a` exists while `a.len()` runs.
+- Q5: the explicit `&mut v` is an ordinary borrow, and arguments run left to
+  right (E0502). Clone into a local first. Through `let r = &mut v;`,
+  `std::mem::replace(r, r.clone())` compiles: passing `r` is an implicit
+  reborrow, which is two-phase (the explicit `&mut *r` is not, and fails).
+- Q6: the receiver reborrow `&mut *r` that rustc inserts is two-phase too.
+- Q7: `let x = &temp;` extends the temporary to the end of the block
+  (`39_drop_raii/drop2`).
+- Q8: extension does not reach through the `.as_str()` call, so `greeting`
+  dangles (E0716, `37_borrowck_errors/borrowck2`).
+- Q9: NLL problem case #3, E0499 at `insert` and at the second `get_mut`.
+  `37_borrowck_errors/borrowck3` explains it; `map.entry(key).or_default()` is
+  the fix.
+- Q10: a `let`-bound closure gets no expected signature, so its returned `&str`
+  has a lifetime unrelated to its argument's: "lifetime may not live long
+  enough", no error code (`33_closures/closure7`)."""
+
 # TRAITS & ABSTRACTION · Testing Seams: Trait-Injected Dependencies, Recording Mocks and Fake Clocks
 
 [[exercises]]
