@@ -4804,6 +4804,40 @@ Do not notify only when the queue was full before the pop. After two quick pops,
 
 Why two condvars: with one shared condvar, the `notify_one` of a pop can wake another consumer, which goes back to sleep while the producer never hears about the slot; with a few threads on each side, every thread can end up asleep (the capacity-1 stress test catches it). One condvar works only with `notify_all` everywhere (a thundering herd). Checking `len()` in a separate call before pushing is check-then-act (another producer can take the slot in between), and so is waiting after a failed `try_push` in a separate critical section: a slot freed in between is announced to nobody, and you sleep through it. std's own bounded queue is `std::sync::mpsc::sync_channel`, used for backpressure in `54_channels/channel1`."""
 
+[[exercises]]
+name = "condvar3"
+dir = "52_condvar"
+hint = """
+The starter's `acquire` skips the decrement when no permit is free and returns a `Permit` anyway, so `a_blocked_acquire_waits_until_a_permit_is_dropped` panics with "acquire handed out a permit although none was free", and eight threads hold more than three permits at once. And `Permit` has no `Drop`, so a dropped permit never comes back: `dropping_a_permit_gives_it_back` fails with `left: 0`, `right: 1`, and a panicking holder leaks its permit for good.
+
+Wait in a loop in `acquire`:
+
+```rust
+fn acquire(&self) -> Permit<'_> {
+    let mut permits = self.permits.lock().unwrap();
+    while *permits == 0 {
+        permits = self.cv.wait(permits).unwrap();
+    }
+    *permits -= 1;
+    Permit { sem: self }
+}
+```
+
+(or replace the lock line and the `while` with `let mut permits = self.cv.wait_while(self.permits.lock().unwrap(), |p| *p == 0).unwrap();`), and give the permit back in `Drop`, state first, then notify:
+
+```rust
+impl Drop for Permit<'_> {
+    fn drop(&mut self) {
+        let mut permits = self.sem.permits.lock().unwrap();
+        *permits += 1;
+        drop(permits);
+        self.sem.cv.notify_one();
+    }
+}
+```
+
+`Drop` runs however the holder's scope ends (a `return`, a `?`, a panic), so no permit can leak, and no lock is held while the permit is in use, so a panicking holder poisons nothing. One permit lets in one thread, so `notify_one` is enough (`notify_all` also works, but wakes the others for nothing). Notify on EVERY drop: skipping the notify when the count was not 0 strands a second waiter when two permits come back in quick succession (`two_permits_dropped_back_to_back_wake_two_waiters`). Notifying before you take the lock and increment is a lost wakeup: the woken thread can look before the count changes, see 0 and sleep through the permit. So is an `acquire` that calls `try_acquire` and then locks again just to wait. The loop is needed because this semaphore is not fair: a thread that was not even waiting can take the returned permit first. See `39_drop_raii` for more `Drop` guards, and tokio's `Semaphore` for an async, FIFO-fair version whose `acquire_owned` returns a permit that owns an `Arc` of its semaphore, so it can move into a spawned task."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
