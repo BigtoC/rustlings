@@ -4878,6 +4878,48 @@ Wrong answers the tests catch:
 
 When locks have no natural number, order them by address (compare `std::ptr::from_ref(a)` with `std::ptr::from_ref(b)`). That works as long as a lock never moves while anyone may lock it. For the single-thread self-deadlock, see also `31_debugging/debugging8`."""
 
+[[exercises]]
+name = "rwlock1"
+dir = "53_lock_hazards"
+hint = """
+`readers_run_at_the_same_time` fails because a `Mutex` lets one thread in at a time. The first reader waits at the `Barrier` inside `with_read` while it holds the lock, and the other three wait for the lock, forever. `a_hit_does_not_wait_for_readers` fails because `get_or_insert_with` takes the map exclusively even on a hit.
+
+Switch the field to `RwLock<HashMap<String, String>>` and import `std::sync::RwLock`. (`#[derive(Default)]` still builds the store.) rustc then reports E0599 "no method named `lock` found for struct `std::sync::RwLock<T>` in the current scope" at every old `lock()`. Readers take `read()` and keep the guard while `f` runs. Writers take `write()`:
+```
+fn with_read<R>(&self, f: impl FnOnce(&HashMap<String, String>) -> R) -> R {
+    f(&self.map.read().unwrap())
+}
+
+fn set(&self, key: &str, value: String) -> Option<String> {
+    self.map.write().unwrap().insert(key.to_owned(), value)
+}
+```
+In `get_or_insert_with`, a hit must need only the read lock. std has no upgradable read. So on a miss, let the read guard go, take the write lock, and look again, because another thread may have stored the key in between. The entry API does the second look and the insert in one step, and calls `make` only if the key is still missing:
+```
+if let Some(value) = self.get(key) {
+    return value;
+}
+self.map
+    .write()
+    .unwrap()
+    .entry(key.to_owned())
+    .or_insert_with(make)
+    .clone()
+```
+`self.get(key)` has dropped its read guard by the time it returns.
+
+Wrong answers the tests catch:
+- Using `self.map.write()` for every call: a hit waits for readers.
+- Keeping a read guard alive while calling `write()`. Examples: a `let guard = self.map.read().unwrap();` still in scope, or `match self.map.read().unwrap().get(key) { .. }` with the write in the `None` arm (a scrutinee's guard lives through every arm). The writer then waits for its own reader forever, and the tests report "deadlock detected". Calling `write()` from inside `with_read` is the same self-deadlock.
+- Inserting on a miss without looking again, or calling `make()` before taking the write lock: two threads that miss together both run `make` (`racing_misses_run_make_once`).
+- Handing `f` a copy of the map, or an `Arc` snapshot that `set` replaces copy-on-write, so that no lock is held while `f` runs. `with_read_lends_the_stored_values` compares heap pointers, and `a_write_waits_for_readers_to_leave` sees `set` return while a reader is still inside. A snapshot is a fine design for hot-swapped config, but it is not this store's contract.
+
+These also work:
+- In edition 2024, `if let Some(v) = self.map.read().unwrap().get(key) { v.clone() } else { /* write */ }`, because the scrutinee's guard is dropped before the `else` block runs. In edition 2021 the same code deadlocks.
+- A plain `get` / `contains_key` check under the write guard instead of the entry API.
+
+`RwLockWriteGuard::downgrade` (Rust 1.92) goes the other way, from write to read. If `make` were slow, you would build the value with no lock held and keep the first value stored (`31_debugging/debugging8`)."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
