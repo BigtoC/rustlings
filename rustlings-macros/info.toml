@@ -3904,6 +3904,35 @@ What fails:
 
 `std::cmp::max` is a function, so its two arguments are evaluated once, before the call. The macro exists only to take any number of arguments; it should behave like a function in every other way."""
 
+[[exercises]]
+name = "macros7"
+dir = "48_macros_deep"
+strict_clippy = true
+hint = """
+E0425 "cannot find function `clamp_percent` in this scope" appears at every call outside `mod util`: first in `report::describe`, then in the tests. `macro_rules!` hygiene is mixed-site: local variables and labels resolve where the macro is DEFINED, but functions, types, modules and macros resolve where it is CALLED, as if the caller had typed the expansion. rustc's suggestion, "consider importing this function", would make every caller import the macro's internals, and a caller with a `clamp_percent` of its own would silently call that one (the `with_its_own_clamp_percent` test).
+
+Name the helper by a path that starts at the defining crate's root:
+```
+#[macro_export]
+macro_rules! percent {
+    ($e:expr) => {
+        $crate::util::clamp_percent($e)
+    };
+}
+```
+`$crate` expands to `crate` inside this crate and to `::your_crate` in any other crate, so the path means the same from every caller, needs no import, and cannot be hijacked. It does not bypass privacy: the expansion is checked at the call site, which is why `util` and `clamp_percent` are `pub` (libraries often hide such helpers with `#[doc(hidden)]`).
+
+`crate::util::clamp_percent($e)` compiles and passes every test here, because the tests live in this crate. Called from another crate, `crate` would mean THAT crate. Clippy's warn-by-default `crate_in_macro_def` ("`crate` references the macro call's crate") rejects it, and this exercise runs clippy with `-D warnings`.
+
+Also correct: a block that imports through `$crate` first, `{ use $crate::util::clamp_percent; clamp_percent($e) }`. The block's own `use` shadows a caller's `clamp_percent`.
+
+What fails:
+- `pub use util::clamp_percent;` at the crate root: `mod tests` sees it through `use super::*`, but `report` and the modules under `callers` still get E0425;
+- building the `Percent` inside the macro: E0603 "tuple struct constructor `Percent` is private", because privacy is checked at the call site too;
+- `self::clamp_percent` or `super::util::clamp_percent`: `self` and `super` count from the CALLER's module (E0425, E0433).
+
+`#[macro_export(local_inner_macros)]` only adds `$crate::` to macro calls, not to functions, and the Reference discourages it in new code. The module README has a table of what resolves where."""
+
 # TRAITS & ABSTRACTION · Testing Seams: Trait-Injected Dependencies, Recording Mocks and Fake Clocks
 
 [[exercises]]
