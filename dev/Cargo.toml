@@ -396,6 +396,8 @@ bin = [
   { name = "graph2_sol", path = "../solutions/62_graphs/graph2.rs" },
   { name = "grid1", path = "../exercises/62_graphs/grid1.rs" },
   { name = "grid1_sol", path = "../solutions/62_graphs/grid1.rs" },
+  { name = "grid2", path = "../exercises/62_graphs/grid2.rs" },
+  { name = "grid2_sol", path = "../solutions/62_graphs/grid2.rs" },
   { name = "futures1", path = "../exercises/28_futures/futures1.rs" },
   { name = "futures1_sol", path = "../solutions/28_futures/futures1.rs" },
   { name = "futures2", path = "../exercises/28_futures/futures2.rs" },

@@ -5159,6 +5159,54 @@ let right = (c + 1 < cols).then_some((r, c + 1));
 ```
 So do `if r > 0` guards, and so does `r.wrapping_sub(1)` followed by the `< rows` check (the wrapped value, `usize::MAX`, fails it). `saturating_sub(1)` turns `(0, c)` into its own neighbor, which fails the corner, edge, 1x1 and brute-force tests. A detour through `i32` breaks past `i32::MAX` rows, and `r as isize - 1` overflows past `isize::MAX`: `coordinates_beyond_i32_and_isize_work` catches both. Related: `63_slices_strings/window1` (`len() - 1` on an empty slice) and `31_debugging/debugging2` (overflow checks in debug and release builds)."""
 
+[[exercises]]
+name = "grid2"
+dir = "62_graphs"
+hint = """
+E0502 "cannot borrow `self.cells` as mutable because it is also borrowed as immutable", with the note "Rust 2024 has adjusted the `impl Trait` lifetime capture rules". In edition 2024 a return-position `impl Trait` captures every generic parameter in scope, including the anonymous lifetime of `&self`. So a caller must assume that the iterator borrows `*self` for as long as it lives, whatever the body does. The `for` loop keeps it alive while `count_islands` writes `self.cells`. The test gets E0502 on `grid.cells` and E0597 on `small` for the same reason. The closure only holds copies of `r`, `c`, `rows` and `cols`, so declare that the hidden type captures nothing:
+```
+fn neighbors(&self, r: usize, c: usize) -> impl Iterator<Item = (usize, usize)> + use<> {
+    let (rows, cols) = (self.rows, self.cols);
+    DIRECTIONS.into_iter().filter_map(move |(dr, dc)| {
+        let nr = r.checked_add_signed(dr)?;
+        let nc = c.checked_add_signed(dc)?;
+        (nr < rows && nc < cols).then_some((nr, nc))
+    })
+}
+```
+`+ use<>` (precise capturing, stable since Rust 1.82) is a promise the compiler checks. If the closure read `self.rows` instead of the copy, the hidden type would hold `&self`, and you would get E0700 "hidden type for `impl Iterator<Item = (usize, usize)>` captures lifetime that does not appear in bounds". `+ 'static` also compiles here; `+ use<'_>` spells out the default and changes nothing. `Box<dyn Iterator<Item = (usize, usize)>>` passes too, because a boxed trait object in a return type defaults to `+ 'static`, but it allocates on every call and is not the `impl Iterator` the TODO asks for. Collecting the neighbors into a `Vec` inside `count_islands` fixes that function but not the test, and allocates for every cell. Under edition 2021 the original signature compiled, because lifetimes were captured only when the bounds named them (`+ '_`).
+
+E0608 "cannot index into a value of type `Grid`": `grid[(r, c)]` means `*grid.index((r, c))`, or `*grid.index_mut((r, c))` when assigned to, so implement both traits with the tuple as the index type. Check each axis on its own: with only `r * cols + c`, `(0, cols)` reads `(1, 0)` and both `#[should_panic]` tests fail. Add `use std::ops::{Index, IndexMut};` and:
+```
+impl Grid {
+    fn offset(&self, (r, c): (usize, usize)) -> usize {
+        assert!(
+            r < self.rows && c < self.cols,
+            "cell ({r}, {c}) is outside the {}x{} grid",
+            self.rows,
+            self.cols
+        );
+        r * self.cols + c
+    }
+}
+
+impl Index<(usize, usize)> for Grid {
+    type Output = u8;
+
+    fn index(&self, cell: (usize, usize)) -> &u8 {
+        &self.cells[self.offset(cell)]
+    }
+}
+
+impl IndexMut<(usize, usize)> for Grid {
+    fn index_mut(&mut self, cell: (usize, usize)) -> &mut u8 {
+        let offset = self.offset(cell);
+        &mut self.cells[offset]
+    }
+}
+```
+In `index_mut`, compute the offset before borrowing `self.cells`. `&mut self.cells[self.offset(cell)]` is E0502 "cannot borrow `*self` as immutable because it is also borrowed as mutable": the part 2 lesson again, since a `&self` method call borrows the whole struct. Related: `graph2` (a recursive flood fill would overflow the stack on the 400x400 island, as its DFS does) and `37_borrowck_errors` for the borrow rules behind both errors."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
