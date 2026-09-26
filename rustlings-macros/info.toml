@@ -1743,6 +1743,107 @@ iterator or writer to a by-value API and keep using it. `fmt::Write` has no
 `by_ref`. See also `24_ownership_model/ownership3` (shared XOR exclusive) and
 `25_lifetimes_deep/lifetimes6` (the `&self` elision rule)."""
 
+# MODULE 1 · Variance and PhantomData: Marker Choice, Auto Traits and the Borrowed-Forever `&'a mut self`
+
+[[exercises]]
+name = "variance1"
+dir = "38_variance"
+hint = """
+Three types, three markers, plus the derives.
+
+`Id<T>`: E0277 "`Rc<String>` cannot be sent between threads safely".
+`PhantomData<T>` means "I own a `T`", so an `Id<Rc<String>>` is exactly as
+`Send` and `Sync` as an `Rc`. An id never owns a row. At most it lets you look
+one up, which is what `fn() -> T` says: covariant in `T` (a return type), and
+`Send + Sync` for every `T` (a function pointer always is). The derives are the
+second problem: `#[derive(Clone)]` generates `impl<T: Clone> Clone for Id<T>`,
+a bound on every type parameter, so `Id<User>` gets none of the traits,
+whatever the marker. Write the impls by hand, with no bound on `T`:
+```
+use std::fmt::{self, Display, Write};
+use std::hash::{Hash, Hasher};
+
+struct Id<T> {
+    raw: u64,
+    _row: PhantomData<fn() -> T>,
+}
+
+impl<T> Clone for Id<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for Id<T> {}
+
+impl<T> PartialEq for Id<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.raw == other.raw
+    }
+}
+
+impl<T> Eq for Id<T> {}
+
+impl<T> Hash for Id<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.raw.hash(state);
+    }
+}
+
+impl<T> fmt::Debug for Id<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Id").field(&self.raw).finish()
+    }
+}
+```
+Writing `Clone` as `*self` is what clippy's `non_canonical_clone_impl` wants
+for a `Copy` type. `Hash` must agree with `eq`: equal ids must hash alike (a
+test hashes two equal ids stored in different places). So hash `raw`, never
+something `eq` ignores, such as the id's address. `write!(f, "Id({})", self.raw)`
+works for `Debug` too. Crates such as `derive-where` and `educe` generate these
+bound-free impls; "perfect derive" is the name of the language discussion.
+Wrong fixes the tests catch:
+- `PhantomData<fn(T)>` or `PhantomData<fn(T) -> T>` break `shrink`
+  (contravariant, invariant).
+- `PhantomData<*const T>` is still not `Send`.
+- A real `Option<fn() -> T>` field makes an `Id` 16 bytes.
+- `unsafe impl Send` is forbidden in this course.
+- Deriving on `User` would mean changing the tests, and a row type should not
+  need `Hash` for its id to have it.
+
+`Sink<T>`: "lifetime may not live long enough" in `widen`. A sink only
+CONSUMES `T`s, so its marker is a function argument, which is contravariant:
+```
+struct Sink<T> {
+    out: String,
+    _accepts: PhantomData<fn(T)>,
+}
+```
+`PhantomData<fn(&T)>` works as well. `PhantomData<Box<dyn Fn(T)>>` does not:
+the type arguments of a trait object are invariant, so `dyn Fn(T)` is not
+contravariant. `PhantomData<fn() -> T>` is covariant, the opposite of what
+`widen` needs.
+
+`LocalOnly`: the probe test fails because `()` is `Send + Sync`. Raw pointers
+are neither, so a raw-pointer marker opts the type out of both, on stable, at
+no cost:
+```
+struct LocalOnly {
+    slot: u32,
+    _not_send: PhantomData<*const ()>,
+}
+```
+`PhantomData<Rc<()>>` works too. `PhantomData<Cell<()>>` only removes `Sync`,
+and `PhantomData<MutexGuard<'static, ()>>` only removes `Send`. The test checks
+both. A real `*const ()` field would also opt out, but on a 64-bit target it
+makes `LocalOnly` 16 bytes instead of 4 (a test checks the size).
+`impl !Send for LocalOnly {}` is E0658 "negative impls are experimental". That
+unstable feature is what std itself uses for `MutexGuard`.
+
+See `47_type_level/typestate1` for a `PhantomData` state marker,
+`40_interior_mutability` for why every cell is invariant, `44_trait_contracts`
+for the `Hash` / `Eq` contract, and `30_send_sync` for the auto-trait rules."""
+
 # MODULE 1 · SMART POINTERS — Box / Rc·Weak / RefCell
 
 [[exercises]]

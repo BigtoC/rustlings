@@ -220,6 +220,8 @@ bin = [
   { name = "borrowck3_sol", path = "../solutions/37_borrowck_errors/borrowck3.rs" },
   { name = "borrowck4", path = "../exercises/37_borrowck_errors/borrowck4.rs" },
   { name = "borrowck4_sol", path = "../solutions/37_borrowck_errors/borrowck4.rs" },
+  { name = "variance1", path = "../exercises/38_variance/variance1.rs" },
+  { name = "variance1_sol", path = "../solutions/38_variance/variance1.rs" },
   { name = "smartptr1", path = "../exercises/26_smart_pointers_deep/smartptr1.rs" },
   { name = "smartptr1_sol", path = "../solutions/26_smart_pointers_deep/smartptr1.rs" },
   { name = "smartptr2", path = "../exercises/26_smart_pointers_deep/smartptr2.rs" },
