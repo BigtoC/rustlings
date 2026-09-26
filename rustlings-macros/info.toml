@@ -3173,6 +3173,26 @@ Now `&name` coerces to `&str` wherever a `&str` is already expected (arguments, 
 Why `Target = str` and not `String`: `str` is the borrowed form, the same target `String` itself has, and it keeps the storage private (you could switch to `Box<str>` later without breaking callers). With `Target = String` the `match &*name` test stops compiling (E0308: the scrutinee becomes a `&String`), and the probe in `the_deref_target_is_str` would reject it too.
 Why no `DerefMut`: a `&mut str` allows `name.make_ascii_uppercase()`, which turns a valid lowercase name into an invalid one behind `Username::new`'s back. `a_username_is_read_only` fails if you add it. `Box::leak(self.0.clone().into_boxed_str())` compiles, but it leaks a copy on every deref, and the heap-pointer test fails. Inherent `len` / `starts_with` methods or an `AsRef<str>` impl alone do not make `greet(&name)` compile: only `Deref` drives coercion. Implementing `AsRef<str>` and `Display` in addition is fine and common for string newtypes. See `deref2` for where `Deref` goes wrong."""
 
+[[exercises]]
+name = "deref2"
+dir = "45_sized_deref"
+hint = """
+E0277 "the trait bound `Admin: Greet` is not satisfied" appears at `welcome(&admin)` and at the `&Admin` to `&dyn Greet` and `Box<Admin>` to `Box<dyn Greet>` casts. `Deref` feeds method lookup and coercion, but a trait bound or a vtable needs an impl for `Admin` itself. (`admin.greet()` compiles only because method lookup derefs to `User::greet`, which says "hi root" and forgets the level.) E0599 "no method named `user`" is the missing accessor. Delete the `Deref` impl and its `use`, then compose and delegate:
+```
+impl Greet for Admin {
+    fn greet(&self) -> String {
+        format!("{} (admin level {})", self.user.greet(), self.level)
+    }
+}
+
+impl Admin {
+    fn user(&self) -> &User {
+        &self.user
+    }
+}
+```
+Delegating to `self.user.greet()` keeps the user's rule (nickname first) in one place. Rebuilding the text from `self.user.name` fails `an_admin_greets_the_way_its_user_does`, and forwarding to `self.user.greet()` alone drops the level. Callers that need the account now ask for it explicitly: `mailing_label(admin.user())`. Keeping the `Deref` next to the new impl fails `an_admin_is_not_a_smart_pointer_to_a_user`, and so does a blanket `impl<T: Deref<Target = User>> Greet for T` (which also greets without the level). When many methods need forwarding, write them out (or use a delegation macro). To share behavior between types, use a trait with default methods (`15_traits`) and generics or `dyn` (`32_dispatch`)."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
