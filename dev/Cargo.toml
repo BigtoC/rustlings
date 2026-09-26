@@ -398,6 +398,8 @@ bin = [
   { name = "async_send3_sol", path = "../solutions/56_async_bounds/async_send3.rs" },
   { name = "async_send4", path = "../exercises/56_async_bounds/async_send4.rs" },
   { name = "async_send4_sol", path = "../solutions/56_async_bounds/async_send4.rs" },
+  { name = "scope1", path = "../exercises/51_scoped_threads/scope1.rs" },
+  { name = "scope1_sol", path = "../solutions/51_scoped_threads/scope1.rs" },
   { name = "atomics1", path = "../exercises/36_atomics/atomics1.rs" },
   { name = "atomics1_sol", path = "../solutions/36_atomics/atomics1.rs" },
   { name = "atomics2", path = "../exercises/36_atomics/atomics2.rs" },

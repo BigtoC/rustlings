@@ -4619,6 +4619,39 @@ Wrong turns:
 
 The cost is one allocation per call plus dynamic dispatch on every poll. Keep the static `-> impl Future + Send` trait from `async_send3` for generic code, and add a boxed twin (a second trait with a blanket impl, or the wrapper struct the `dynosaur` crate generates) when you need `dyn`."""
 
+# MODULE 4 · Scoped Threads: Borrowing Across Threads, Disjoint `&mut` and Barriers
+
+[[exercises]]
+name = "scope1"
+dir = "51_scoped_threads"
+hint = """
+E0521 "borrowed data escapes outside of function", reported twice: once for `data` and once for `on_chunk`. `thread::spawn` requires `F: Send + 'static` because a spawned thread may outlive the function that started it. These closures capture `left` and `right` (borrowed from `data`) and `on_chunk`, which are only valid until `parallel_sum_with` returns. Joining right away changes nothing, because the bound is in `spawn`'s signature, and `move` only moves the references.
+
+Use `std::thread::scope` instead. Its `Scope::spawn` only asks for `'scope`, because `scope` joins every thread before it returns:
+```
+thread::scope(|s| {
+    let a = s.spawn(|| {
+        on_chunk(left);
+        left.iter().sum::<u64>()
+    });
+    let b = s.spawn(|| {
+        on_chunk(right);
+        right.iter().sum::<u64>()
+    });
+    a.join().unwrap() + b.join().unwrap()
+})
+```
+Spawn both threads before joining either. With `s.spawn(..).join()` on each line the halves run one after the other, and `both_halves_are_summed_at_the_same_time` fails after its 20 s deadline.
+
+These also pass:
+- summing one half on the current thread while the other runs on a scoped thread;
+- keeping `move` on the closures (it only copies the references);
+- adding both sums into an `AtomicU64` instead of joining.
+
+Don't satisfy `'static` with `data.to_vec()`, an `Arc<Vec<u64>>` or `Box::leak`. Each of those copies the input, and `each_half_is_the_callers_memory_on_its_own_thread` compares addresses.
+
+`join()` returns a worker's panic as an `Err`, and `unwrap()` turns it into a panic in the caller. If a scoped thread panics and you never join it, `scope` itself panics with "a scoped thread panicked" once every thread has finished. The module README explains why the older guard-based `thread::scoped` was unsound. See also `25_lifetimes_deep/lifetimes7` (`T: 'static` for owned values) and `33_closures/closure1` (E0373 and `move`)."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
