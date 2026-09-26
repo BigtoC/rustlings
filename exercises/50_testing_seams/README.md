@@ -1,6 +1,6 @@
 # Traits & Abstraction · Testing Seams: Trait-Injected Dependencies, Recording Mocks and Fake Clocks
 
-> The last module of the "Traits & Abstraction" group, after `47_type_level`.
+> The last module of the "Traits & Abstraction" group, after `49_panics`.
 > It puts the interior mutability of `26_smart_pointers_deep` and
 > `40_interior_mutability` and the dispatch trade-offs of `32_dispatch` to
 > work. "How would you test this?" follows almost every design question, and
@@ -57,8 +57,8 @@
   | `&dyn Mailer` / `&M` borrowed                       | either          | a lifetime parameter on the service                                                      |
 
   See `32_dispatch` for the mechanics. The forwarding impl that lets a service
-  take `&mock` directly (`impl<T: Mailer + ?Sized> Mailer for &T`) is planned
-  as `sized2`, in the `?Sized` half of `45_sized_deref`.
+  take `&mock` directly (`impl<T: Mailer + ?Sized> Mailer for &T`) is
+  `45_sized_deref/sized2`.
 
 ## The Token Bucket (seams2)
 

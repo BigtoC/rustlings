@@ -88,9 +88,9 @@
   rounding direction and fixed-point decimals.
 - `67_code_review/review1` hides a `&memo[..16]` that cuts a character in
   half among other planted bugs, with no TODO pointing at it.
-- Planned (Tier 2 in `deep-dive/ROADMAP.md`): `64_parsing` (`parse1..3`),
-  a lexer whose borrowed tokens are slices cut at byte offsets, and
-  `61_trees` / `62_graphs`, more live-coding problems in the same style.
+- `64_parsing` (`parse1..3`), next: a lexer whose borrowed tokens are slices
+  cut at byte offsets. `61_trees` and `62_graphs` (Module 2) and
+  `68_mock_interviews` hold more live-coding problems in the same style.
 
 ## Further Reading
 

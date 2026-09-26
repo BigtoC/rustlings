@@ -5,9 +5,8 @@
 > pointers, in safe Rust?" comes up in almost every Rust interview, and the
 > answer interviewers want is an **arena**: every node lives in one `Vec`, and
 > every link is an index. This module is the base for `60_lru_cache` (`lru2`
-> is an index-linked list in a `Vec`) and for the planned `62_graphs` module
-> (Tier 2 in `deep-dive/ROADMAP.md`). All **std**, **100% safe**, **stable**
-> Rust, edition 2024.
+> is an index-linked list in a `Vec`) and for the adjacency lists of
+> `62_graphs`. All **std**, **100% safe**, **stable** Rust, edition 2024.
 >
 > As in `37_borrowck_errors`, the `// TODO` comments name the error and the
 > requirements but **not** the fix, as in an interview. Press `h` when you want

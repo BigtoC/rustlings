@@ -51,7 +51,8 @@
 `Cell`, `RefCell`, `OnceCell` and `LazyCell` are `Send` when their contents
 are, but never `Sync`. Every type built on `UnsafeCell<T>` is **invariant** in
 `T`. If a `Cell<&'static str>` could be used as a `Cell<&'a str>`, you could
-`set` a short-lived `&str` into it and read it back as `'static`.
+`set` a short-lived `&str` into it and read it back as `'static`
+(`38_variance` has the full variance table).
 
 ## Globals: What rustc Accepts
 

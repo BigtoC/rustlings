@@ -161,8 +161,8 @@ and out of `Drop` types), `26_smart_pointers_deep/smartptr2` (`Rc` and
 `40_interior_mutability` (`Cell`, `thread_local!`), `52_condvar/condvar3` (an
 RAII semaphore permit), `57_async_combinators/select1` and `cancel1` (dropping
 a future cancels it, and what that loses), and `59_arena` (trees without
-reference counting). The planned `49_panics` module covers `catch_unwind` and
-the abort cases in depth.
+reference counting). `49_panics` covers `catch_unwind`, poisoning and the
+abort cases in depth.
 
 ## Further Reading
 

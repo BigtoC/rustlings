@@ -23,8 +23,8 @@
 // but a type parameter that no field uses is E0392 "type parameter `S` is
 // never used". The answer is a `PhantomData<S>` field: zero bytes that tell
 // the compiler to treat the struct as if it held an `S` (for auto traits and
-// variance; the planned `38_variance` module is about choosing that marker
-// with care, but with empty unit structs it makes no difference). So
+// variance; `38_variance/variance1` is about choosing that marker with
+// care, but with empty unit structs it makes no difference). So
 // typestate costs nothing at run time: no extra bytes (a test compares the
 // sizes of the two builders), no branch, no error value. The cost is in the
 // API. Signatures get more types, and builders in different states cannot

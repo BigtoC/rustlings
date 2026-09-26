@@ -1,7 +1,7 @@
 # Traits & Abstraction · Builders and Typestate: From Run-Time Checks to Compile-Time Guarantees
 
 > Part of the "Traits & Abstraction" group, after `45_sized_deref` and before
-> `50_testing_seams`. "Design this API" is the most common library and backend
+> `quizzes/quiz4` and `48_macros_deep`. "Design this API" is the most common library and backend
 > prompt in a Rust interview. This module drills the two answers reviewers look
 > for: a builder that is pleasant to call and validates what it builds, and a
 > typestate builder that turns misuse into a compile error. Entirely **std**,
@@ -51,7 +51,7 @@
   states the choice of marker makes no difference, but in general it does:
   `PhantomData<T>` is `Send` only if `T` is, `PhantomData<fn() -> T>` is always
   `Send + Sync` (both are covariant), and `PhantomData<fn(T)>` is
-  contravariant. That is the planned `38_variance` module.
+  contravariant. `38_variance/variance1` drills that choice.
 - **Seal the state trait.** `pub trait State: sealed::Sealed {}` with
   `Sealed` declared `pub` inside a private `mod sealed`. Other crates can name
   `State` but cannot implement it, because they cannot name its supertrait.

@@ -3726,7 +3726,7 @@ still cannot prove that the call fails to compile. Try
 `RequestBuilder::default().send();` in `main` to see E0599 with the note "the
 method was found for `RequestBuilder<HasUrl>`". The planned `api-surface-lab`
 turns that into a `compile_fail` doctest. For choosing a `PhantomData` marker
-with the right variance and auto traits, see the planned `38_variance`."""
+with the right variance and auto traits, see `38_variance/variance1`."""
 
 # QUIZ 4 · Method Resolution and Borrowck Verdicts
 

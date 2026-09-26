@@ -81,6 +81,10 @@ std's reentrant lock, `ReentrantLock` (what `Stdout` uses inside), is still
 unstable. `parking_lot::RwLock` adds `upgradable_read` (only one upgradable
 guard at a time, next to plain readers) and `read_recursive`.
 
+What to do with a poisoned lock (recover the guard with
+`PoisonError::into_inner`, repair the invariant, `clear_poison`) is
+`49_panics/panic2`.
+
 ## How the Tests Catch a Deadlock
 
 A deadlocked test would hang forever: rustlings runs `cargo test` without a

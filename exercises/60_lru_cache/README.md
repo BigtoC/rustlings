@@ -115,7 +115,7 @@ Related: `59_arena` introduces index links and generations, and
 proof of disjointness. The raw-pointer doubly linked list is in
 `deep-dive/src/unsafe_list.rs`, and `deep-dive/src/self_referential.rs` shows
 why a struct cannot simply hold pointers into itself. Index-based graphs come
-back in the planned `62_graphs` module (Tier 2 in `deep-dive/ROADMAP.md`).
+back in `62_graphs`.
 
 ## Further Reading
 

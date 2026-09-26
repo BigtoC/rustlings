@@ -14,8 +14,8 @@
 // `K: Borrow<Q>` says "a stored key can be viewed as a `&Q`", so the map can
 // test `stored.borrow() == key`. `Q: Hash + Eq` lets it hash and compare the
 // query. `?Sized` lets `Q` be `str`, `[u8]` or `Path`, types without a size
-// of their own (they only ever live behind a pointer; more on that in the
-// `?Sized` part of this module, coming later). std provides
+// of their own (they only ever live behind a pointer; more on that in
+// `sized1..3`, at the end of this module). std provides
 // `String: Borrow<str>`, `Vec<T>: Borrow<[T]>`, `PathBuf: Borrow<Path>`,
 // `Box<T>`, `Rc<T>` and `Arc<T>: Borrow<T>`, and the reflexive `T: Borrow<T>`
 // for every type, which is why `map.get(&owned_key)` still works.

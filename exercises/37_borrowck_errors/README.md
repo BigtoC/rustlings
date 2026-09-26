@@ -74,6 +74,10 @@ Related errors covered elsewhere: E0597 "does not live long enough"
    reading are separate calls. Then a `&mut String` passed to a generic
    `W: Write` is moved rather than reborrowed: reborrow it explicitly.
 
+`38_variance/variance2` comes next: a `&'a mut self` that keeps a struct
+borrowed for good. Later, `quizzes/quiz4` (after `47_type_level`) asks you to
+predict rustc's verdict on short snippets, two-phase borrows included.
+
 ## Further Reading
 
 - [References and Borrowing (The Book)](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html)

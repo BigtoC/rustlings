@@ -1,7 +1,7 @@
 # Module 5 · Code Review: Find the Bugs, Then Fix the Idioms
 
 > The review round of Module 5, after the debugging drills of `31_debugging`
-> and the live-coding drills of `63_slices_strings` and `66_checked_math`.
+> and the live-coding drills of `63_slices_strings` to `66_checked_math`.
 > Many interview loops hand you a pull request instead of a blank editor and
 > ask what you would flag before approving it. `review1` is that round with
 > real bugs, `review2` with correct but unidiomatic code. All **std**, **100%
@@ -106,11 +106,10 @@ own: `31_debugging`, `63_slices_strings`, `66_checked_math` and
   The audit-log observer in `review1`'s tests is a spy.
 - `22_clippy` — the first clippy exercises; `review2` asks for the reasons
   behind the lints.
-- Planned `65_performance` (ROADMAP: `perf-allocation-aware`) — the
-  allocation side of `ptr_arg` and index loops: buffer reuse, borrowed
-  returns and `&[T]` parameters checked by pointer identity.
-- Planned `68_mock_interviews` (ROADMAP: `interview-set-format`) — timed,
-  statement-first interview sets.
+- `65_performance` — the allocation side of `ptr_arg`: buffer reuse and
+  borrowed returns checked by pointer identity, and `&str` / `&[T]`
+  parameters that accept every caller.
+- `68_mock_interviews` (next) — timed, statement-first interview sets.
 - Planned deep-dive lab `api-surface-lab` (ROADMAP) — integration tests and
   property tests with proptest, which find boundary inputs like the ones in
   `review1`'s bug reports without you having to guess them.

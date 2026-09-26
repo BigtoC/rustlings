@@ -23,8 +23,8 @@
 5. **Tiering**: 27 candidates in Tier 1, 16 in Tier 2, 7 deep-dive labs, 10 cut.
 
 Module numbers were assigned during the merge step and are kept when a module is
-built, so cross-references stay valid; the numbers of unbuilt modules are
-reserved. The directory number is only an ID: a module's place in the learner
+built, so cross-references stay valid. Every Tier 1 and Tier 2 module is now
+built; the two unused numbers, 46 and 55, belong to cut modules. The directory number is only an ID: a module's place in the learner
 path is set by where its `[[exercises]]` entries go in `rustlings-macros/info.toml`.
 
 ### How to read an entry
@@ -73,20 +73,17 @@ Done:
 - [x] `63_slices_strings` — `window1..4` — built
 - [x] `66_checked_math` — `checkedmath1..4` — built
 - [x] `67_code_review` — `review1..2` — built
-
-Tier 2, not started:
-
-- [ ] `38_variance` — `variance1..2`
-- [ ] `45_sized_deref` (`?Sized` part) — `sized1..3`
-- [ ] Quizzes after `47_type_level` — `quiz4_resolution`, `quiz5_compiles`, `quiz6_borrowck`
-- [ ] `48_macros_deep` — `macros5..8`
-- [ ] `49_panics` — `panic1..3`
-- [ ] Quiz `quiz7_send_sync` — `quiz_send_sync`, `quiz_orderings`
-- [ ] `61_trees` — `bst1..4`
-- [ ] `62_graphs` — `graph1..4`, `grid1..2`
-- [ ] `64_parsing` — `parse1..3`
-- [ ] `65_performance` — `perf1..3`
-- [ ] `68_mock_interviews` — `set_trie`, `set_edit_distance`, `set_kv_tx`, `set_kv_tx_part2`
+- [x] `38_variance` — `variance1..2` — built
+- [x] `45_sized_deref` (`?Sized` part) — `sized1..3` — built
+- [x] Quizzes after `47_type_level` — merged into one quiz, `quizzes/quiz4` — built
+- [x] `48_macros_deep` — `macros5..8` — built
+- [x] `49_panics` — `panic1..3` — built
+- [x] Quiz `quiz7_send_sync` — `quizzes/quiz5` (Send / Sync only) — built
+- [x] `61_trees` — `bst1..4` — built
+- [x] `62_graphs` — `graph1..2` (`graph3` / `graph4` merged into `graph1`), `grid1..2` — built
+- [x] `64_parsing` — `parse1..3` — built
+- [x] `65_performance` — `perf1..3` — built
+- [x] `68_mock_interviews` — `set_trie`, `set_edit_distance`, `set_kv_tx`, `set_kv_tx_part2` — built
 
 Deep-dive labs, not started:
 
@@ -341,7 +338,7 @@ Theme: the `Eq` / `Hash` / `Ord` contracts and floats (the `std::ops` half of th
 
 ### `45_sized_deref` (Deref, Borrow and Cow part) (built)
 
-Theme: Deref coercion and its limits, `Borrow<Q>` lookups, `Cow`-returning APIs. The `?Sized` half of this module is in [Tier 2](#45_sized_deref-sized-part).
+Theme: Deref coercion and its limits, `Borrow<Q>` lookups, `Cow`-returning APIs. The `?Sized` half of this module (`sized1..3`) is in [Tier 2](#45_sized_deref-sized-part-built).
 
 **As built** (see `exercises/45_sized_deref/`; adversarially reviewed). Deviations and verified corrections:
 
@@ -753,11 +750,18 @@ Theme: an unguided multi-bug PR and an idiomatic refactor.
 
 ## Tier 2
 
-Build after Tier 1. Same order convention.
+Built after Tier 1; every entry below is built. Same order convention.
 
-### `38_variance`
+### `38_variance` (built)
 
 Theme: variance, `PhantomData` marker choice, the borrowed-forever bug. Placed after `25_lifetimes_deep`.
+
+**As built** (see `exercises/38_variance/`; adversarially reviewed). Deviations and verified corrections:
+
+- `variance1`: Deviations from the ROADMAP entry: (1) Part 3 (`LocalOnly`) is checked by a runtime #[test] on the CONCRETE type, with the inherent-impl-precedence probe (`Probe::<T>::IS_SEND` / `IS_SYNC` inside a `send_sync!` macro, never inside a generic fn). This was reverified on 1.96: concrete u32 gives true, Rc gives false, and a generic `fn f<T>()` always gives false. So it fails as a test, not as E0080, and only after parts 1 and 2 compile. Per the *(scope)* note, the compile_fail check belongs to the planned api-surface-lab. (2) The derive fold-in is in. `Clone` goes through a generic `duplicate<C: Clone>` helper, so it reports E0277 instead of E0599 (a direct `.clone()` on a Copy type trips clippy's clone_on_copy). (3) A small `Table<T>` gives the ids context, and a thread test sends an `Id<Rc<String>>` to a worker. (4) Reviewer addition: a `same_hash` assertion (DefaultHasher) catches a Hash/Eq-inconsistent Hash, such as hashing the address, which passed before. It adds a second E0277 `User: Hash` to the unsolved build. (5) The header topic is now 'Variance and PhantomData', to match the README.
+- `variance2`: Built as the graded core, as the *(scope)* note asks. Beyond the ROADMAP entry: `add` deduplicates and returns a `usize` symbol, which shows that nothing returned holds the borrow; the signature alone does. There are `get(&self) -> Option<&'a str>` and `into_words(self)`. A given helper `intern_all(&mut Interner<'a>, &'a str)` adds E0621. Its help does NOT fix the helper: the loop keeps its E0499, and callers break. The builder's text claimed the help compiles `intern_all`; that was false and is now corrected everywhere. The cursor also reports E0499 when a test starts a second cursor on `rest`, besides the ROADMAP's E0502 (which is on `rest`, not `text`, because the tests advance a separate `rest` variable). Reviewer addition: the test `a_filled_interner_can_be_shared` (`assert_sync(&interner)`) rejects `RefCell` + `add(&self)`, which passed before. The solution now passes 8 tests.
+- Correction: the note that the will-it-compile variance drills belong to `resolution-compile-quiz` is superseded by that quiz's *(scope)* merge. The module README carries a checked "Will It Compile?" table instead.
+- Correction: following E0621's help (`&'a mut Interner<'a>`) does not make a looping caller compile; the E0499 in the loop stays.
 
 #### Variance and PhantomData: marker choice and the borrowed-forever `&'a mut Foo<'a>` bug
 
@@ -798,9 +802,15 @@ Theme: closure bounds beyond the basics: higher-ranked `for<'a>` and async closu
   - Tests: closure5 `apply_to_local(|s| s.len()) == 11` and a word count of 2; closure6 gives `(3, 6, Some(3))` for `Vec`, array, `VecDeque` and `BTreeSet` and `(0, 0, None)` for an empty `Vec`; closure7 `run("  > hello world ") == "hello"` with the result pointer inside the input; closure8 returns `Some(7)` after exactly 3 attempts.
   - *(scope)* Anchor the module on the HRTB-shaped error people actually hit in live coding: `sort_by_key(|p| &p.name)`, which the relevance review checked fails on 1.96 with "lifetime may not live long enough". closure5 and closure6 are the useful core; closure7 is a quirk and closure8 (async closures) is too new to be asked much, so keep both short.
 
-### `45_sized_deref` (`?Sized` part)
+### `45_sized_deref` (`?Sized` part) (built)
 
 Theme: `?Sized`, DSTs and forwarding impls. The Deref / Borrow / Cow half is in Tier 1.
+
+**As built** (see `exercises/45_sized_deref/`; adversarially reviewed). Deviations and verified corrections:
+
+- `sized1`: Deviation (kept): adds a Part B, `fn trimmed(text: &impl AsRef<str>) -> &str`, showing that `impl Trait` in argument position has the implicit `Sized` bound too. rustc 1.96 suggests `&impl AsRef<str> + ?Sized`, which fails with "ambiguous `+` in a type"; the follow-up help gives the parenthesized form. Part A follows the ROADMAP ("a,b", "1,x", sized T still works). The tests turbofish `join_all::<str>` and `join_all::<dyn Display>`, so `&[&dyn Display]` and `&[T]` signatures don't pass. Review change: the header now quotes the real E0277 message for by-value `T: ?Sized`; the "function arguments must have a statically known size" line is only rustc's help. Tests unchanged.
+- `sized2`: Follows the ROADMAP (a boxed dyn slice sums to PI + 4, `&[&c, &c]` is 2 * PI, the borrowed mock records calls after the service used it). Additions: the trait has a provided `name` that the wrapper must forward, and the tests also cover `Box<Square>`, `&dyn Shape`, nested `&Box<dyn Shape>` / `Box<&dyn Shape>`, an empty slice, `&dyn Mailer`, two services sharing one mock, and an owned mock. The `impl<T: Mailer + ?Sized> Mailer for &T` forwarding stays in, per the module note (50_testing_seams/README.md deferred it here; seams1 doesn't have it). That overrides the ROADMAP's "keep only one" only in form: the mock is given and minimal, and it points to seams1 instead of re-drilling it. Review change: added the test `trait_objects_with_auto_traits_are_shapes` (`Box<dyn Shape + Send>` and `&(dyn Shape + Sync)`). Without it, sized generic impls plus concrete `Box<dyn Shape>` / `&dyn Shape` impls passed every test while skipping `?Sized`. Header, TODO, hint and README updated to match. One non-idiomatic alternative is still accepted: the `Deref` blanket (documented).
+- `sized3`: Kept despite the *(scope)* niche note, and kept short (6 tests). The module note prefers keeping it, and it closes the fn -> impl -> struct progression and answers the ROADMAP interview question "Can a struct have an unsized field?". Deviations: the starter declares `payload` before `id`, so the learner also meets the last-field rule. The starter's single `impl<T>` has `new` next to `id`/`payload`, so relaxing it shows that by-value methods need `T: Sized` back. `checksum(&Packet<[u8]>)` and `describe(&Packet<dyn Display>)` are given rather than written by the learner (the ROADMAP had the learner write `checksum`); this keeps the niche exercise short. All ROADMAP checks are present: checksum == 10, payload().to_string() == "7.5", `size_of::<&Packet<[u8]>>()` == 2W, `&Packet<[u8; 4]>` == W, `size_of_val(&*b)` == 8. Review change: added the test `every_unsized_payload_gets_the_methods` (`[u16]` and `dyn Debug` payloads). Without it, concrete `impl Packet<[u8]>` / `impl Packet<dyn Display>` blocks passed. Header "all in one allocation" is now "stored together in one value". The TODO and solution comment are updated.
 
 #### `?Sized`, DSTs and forwarding impls for `&T` and `Box<T>`
 
@@ -836,9 +846,13 @@ Theme: `Any` downcasting via trait upcasting; generic methods vs dyn compatibili
   - *(scope)* dispatch6 overlaps `dispatch2` and the dyn slot in `quiz5_compiles`; keep only one of them.
   - The default-object-lifetime exercise originally proposed for this module moved to `static-lifetimes` (lifetimes8).
 
-### Quizzes after `47_type_level`
+### Quizzes after `47_type_level` (built as `quizzes/quiz4`)
 
 Theme: auto-graded predict and will-it-compile drills for method resolution, variance and borrowck.
+
+**As built** (see `exercises/quizzes/`; adversarially reviewed). Deviations and verified corrections:
+
+- `quiz4`: Following the *(scope)* note, the ROADMAP's three quizzes (quiz4_resolution, quiz5_compiles, quiz6_borrowck) are merged into ONE quiz4, placed after 47_type_level. Dropped: the autoref predictions ((&s).name(), (&&s).who(), r.clone() on &NoClone with its noop_method_call issue, the Rc::clone count) and every variance and dyn slot of quiz5_compiles, which 38_variance covers. Part A is a fix-it with E0034 (Pilot and Wizard `fly` on Human) and E0790. The E0790 site is GENERIC (`fn baby_name_of<T: Animal>()`), so rustc's help (`<Dog as Animal>` / `<Cat as Animal>`) is a wrong answer, and the tests catch it with a Duck defined in the tests. The fix is `<T as Animal>::baby_name()`, not the ROADMAP's concrete `<Dog as Animal>::baby_name()`. Dog's inherent `baby_name` ("Spot") catches the `Dog::baby_name()` wrong fix. The ROADMAP's `<Human as Pilot>::fly(&h)` also passes, through deref coercion. Part B keeps all 8 verified borrowck verdicts and adds 2 verified two-phase items (`v.push(v.pop().unwrap_or(0))` is E0499; array `a[a.len() - 1] = 7` compiles), 10 verdicts in all. Instead of one `[Verdict; 8]` array fingerprint, each question has its own test with an FNV-1a fingerprint salted by the question id. A failure therefore names the wrong question without revealing the answer. Unanswered placeholders replace the ROADMAP's E0425-first fail mode. Problem case #3 is Q9; it is only cross-referenced to 37_borrowck_errors/borrowck3, not re-explained. The header no longer quotes the ROADMAP's sharpest question verbatim, because that would give away Q1 and Q3.
 
 #### Auto-graded drills: method resolution and fully qualified syntax, will-it-compile, borrowck verdicts
 
@@ -855,9 +869,16 @@ Theme: auto-graded predict and will-it-compile drills for method resolution, var
   - Verified quiz6 verdicts: `v.push(v.len())` compiles (two-phase borrow); `v[v.len() - 1] = 7` is E0502; `mem::replace(&mut v, v.clone())` is E0502; `let r = &mut v; r.push(r.len())` compiles; `let r = &String::from("x")` compiles (lifetime extension); `.as_str()` on a temporary is E0716 when used; problem case #3 is E0499 (may change under Polonius); `let f = |s: &str| -> &str { s }` errors.
   - *(scope)* Merge down to one quiz: fully qualified syntax (E0034 / E0790) plus the borrowck verdicts. quiz4's autoref puzzles (`(&&s).who()`) are trivia, and quiz5 duplicates `variance-phantomdata`. Keep problem case #3 canonical in `borrowck3` and cross-reference it. This quiz also covers the will-it-compile set of the cut `algorithm-semantics-quiz`.
 
-### `48_macros_deep`
+### `48_macros_deep` (built)
 
 Theme: `macro_rules!` repetition, recursion, hygiene, `$crate`, code generation.
+
+**As built** (see `exercises/48_macros_deep/`; adversarially reviewed). Deviations and verified corrections:
+
+- `macros5`: Tests go beyond the ROADMAP's "capacity at least 3". That check cannot tell pre-sizing from growth: both give capacity 3 for 3 keys. So the tests compare `capacity()` with `HashMap::with_capacity(n).capacity()` for the same K/V types, including five pairs that share one key (pre-sized: 7, grown on demand: 3). Also added: tt-group counting, count! in a const and as an array length, a 20-token count, an evaluation-order log, a non-Clone value moved in (pointer check), a call from a module with no `use` lines, and a given caller `status_names()` so `cargo build` fails too. Review: header and hint now use the current `${count($x)}` syntax; the count! TODO wording and both TODO endings are fixed.
+- `macros6`: As in the ROADMAP (run-time failure, left 7 / right 3). The starter already has the `$(,)?` base case, so it compiles and fails only at run time. Non-Copy values are built inline so the starter never hits E0382. Added tests: evaluation-order log, 10 increasing arguments (1023 vs 10 calls), a side effect in a block argument, f64/&str/char (rejects `std::cmp::max`), non-Copy by-value arguments (rejects binding by reference, E0507), hygiene with caller variables named first/rest/a/b, and nested calls. Review: added a non-Copy, non-Clone `Bid` case so the TODO's "neither Copy nor Clone" requirement is enforced (rejects `.clone()`), and fixed the TODO ending. The no-helper-function rule is not machine-checked; a PartialOrd helper still evaluates each argument once.
+- `macros7`: strict_clippy = true is an addition to the ROADMAP. Inside one crate, no test can tell `crate::util::clamp_percent` from `$crate::...`, so clippy's warn-by-default `crate_in_macro_def` under -D warnings is what grades the `$crate` lesson. Verified: the `crate::` variant builds and passes 8/8 tests, then fails clippy -D warnings. The starter still fails at compile time (E0425), so dev check's unsolved check is unaffected. Design additions: the helper returns a `Percent` newtype with a private field, so the macro cannot inline the clamp (E0603) and tests use `percent!(..).get()`; `pub mod util`; a given `report` caller; the no-import and impostor callers sit two modules deep, so `super::util::` cannot resolve by accident. Review: TODO ending fixed; no other change. Graded by clippy: registered with `strict_clippy = true`.
+- `macros8`: Table syntax extends the ROADMAP's `name: input => expected;` rows. It adds a leading `function;` header, so the macro is reusable: two tables test `slugify` and `word_count`, which catches a hard-coded function. Rows may carry attributes through a `meta` fragment; one row has `#[should_panic(expected = "left == right")]`. The ROADMAP's "three generated tests run by name" check became two checks. First, the tables live in a `#[deny(dead_code)]` module, so a missing `#[test]` is a compile error; the source attribute overrides the Cargo `-A dead_code`. Second, a `catch_unwind` test calls the should-panic row by name to prove its body asserts. The newtype tests supply the literal `#[test]`, including a second invocation with a trailing comma from a module with no `use` lines. Review: the Part B TODO now asks for `assert_eq!` (the should_panic row expects its message), and both TODO endings are fixed.
 
 #### Declarative macros in depth: repetition, recursion, single evaluation and hygiene, `$crate`
 
@@ -875,9 +896,15 @@ Theme: `macro_rules!` repetition, recursion, hygiene, `$crate`, code generation.
   - Tests: macros5 len 3, trailing comma accepted, capacity at least 3, empty map, `count == 4`; macros6 `max!(next(3), next(9), next(4)) == 9` with exactly 3 calls, and a hygiene test shows the caller's `a` / `b` unchanged; macros7 `percent!(-5) == 0`, `percent!(42) == 42`, `percent!(1_000) == 100`; macros8 `Meters(1.5) + Meters(2.0) == Meters(3.5)`, `"2 Seconds"`, three generated tests run by name.
   - Fold-in from the cut `proc-macro-lab`: link dtolnay's proc-macro-workshop from the README, with a short "declarative vs procedural" Q&A (when you need a proc macro instead of `macro_rules!`, why it must live in its own crate, how to emit a span-accurate error).
 
-### `49_panics`
+### `49_panics` (built)
 
 Theme: `catch_unwind`, payloads, poisoning, panic safety.
+
+**As built** (see `exercises/49_panics/`; adversarially reviewed). Deviations and verified corrections:
+
+- `panic1`: Two change sites: `panic_message(payload: &(dyn Any + Send)) -> String` (the type std's panic hook payload has, so the `&payload` Box trap from dispatch5 fails the tests) and `run_isolated`, which starts as `Ok(f())` per the ROADMAP. Beyond the ROADMAP tests (Ok path, "boom", "job 7 failed" formatted at run time, panic_any(42u8) fallback, a `&mut` capture) it adds a `&Cell` capture and an `Rc` result (these reject UnwindSafe/Send bounds and thread-based versions), std's own unwrap/expect messages, one panicking job not stopping the others, and a `JoinHandle::join` payload. Review: the header's claim that a library cannot know the panic strategy is corrected (`cfg(panic)` is stable).
+- `panic2`: The ROADMAP has `read_total` call `lock().unwrap()` itself. Here `post`, `read_total` and `entries` all go through one `lock_ledger` helper, which is where a poisoning policy belongs, so the TODO sits there. Poisoning is deterministic: a spawned worker pushes and panics before updating `total`, then the test calls `join()`. Beyond the ROADMAP tests (is_poisoned before, total == sum(entries) after, a later lock() Ok) it checks that every entry is kept (rejects reset/pop), that the repair happens in place (heap-pointer check), that only a poisoned lock is repaired (probe test), a crash after a complete update, that a panic outside the lock poisons nothing, a second crash (needs clear_poison), and 4 workers continuing after a crash. Review: the TODO now requires holding the lock throughout, because the drop/clear/relock variant passes every test while being racy; the header's RwLock-reader rationale is corrected.
+- `panic3`: Uses the same `Ledger { entries, total }` as panic2 (the ROADMAP's `items` became `entries`), so part 3 reads as 'never leave anything to repair'. The ROADMAP *(scope)* note calls panic3 senior-niche but short, so it was kept with a one-function change site. Added tests: overflow (each converted entry fits, the sum does not; rejects committing the entries before the total), a once-per-entry in-order call log (rejects validate-then-apply), a panic on the last entry, an empty ledger, reuse after a failed apply, and a Mutex test tying back to panic2. Undetectable without unsafe, so forbidden only in the TODO: a snapshot restored via catch_unwind + resume_unwind or a drop guard. Review: C++ guarantee naming (no-throw) and the `Ledger::new` overflow doc were corrected.
 
 #### Panics: catch_unwind, UnwindSafe and payloads, Mutex poisoning recovery, panic-safe invariants
 
@@ -912,9 +939,14 @@ Theme: weak-CAS / `fetch_update` loops and ABA (`atomics4..5`).
   - `fetch_update` and the newer `try_update` both compile without deprecation warnings on 1.96.
   - *(scope)* The arena-plus-tag ABA in atomics5 is contrived: keep it short, or make it a design explanation that points to the Treiber stack in `lock-free-ordering-lab`.
 
-### Quiz `quiz7_send_sync`
+### Quiz `quiz7_send_sync` (built as `quizzes/quiz5`)
 
 Theme: `Send` / `Sync` of std types. Proposed position: after `55_thread_pool`, which is cut, so place it after the last concurrency module.
+
+**As built** (see `exercises/quizzes/`; adversarially reviewed). Deviations and verified corrections:
+
+- `quiz5`: Built as quiz5 (the ROADMAP's 'quiz7_send_sync / quiz_send_sync'), placed after 36_atomics. The `quiz_orderings` part (store buffering and IRIW) is dropped: per the *(scope)* note it moves to the planned lock-free-ordering-lab. Instead of 12 loose booleans, the format is 14 types, each classified SendAndSync / SendOnly / SyncOnly / Neither (28 facts). It keeps all 12 ROADMAP facts and adds `Cell<i32>`, `MutexGuard<'_, Cell<i32>>` and `Box<dyn Fn() + Send>`. Unanswered placeholders replace the ROADMAP's E0425-first fail mode. The tests grade against the compiler through the inherent-impl-precedence probe, which the scope note allows. The probe is used on concrete types only. So no expected value appears in the source or in failure messages, and each failure asks a leading question instead of stating the rule. I cross-checked all 28 facts on 1.96 without the probe: assert_send / assert_sync compile for every true fact, and every false fact is an E0277 compile failure. The tests use no threads.
+- The store-buffering and IRIW questions moved to `lock-free-ordering-lab` (see its Receives note).
 
 #### Quiz: Send and Sync of std types, store-buffering outcomes
 
@@ -951,9 +983,16 @@ Theme: LeetCode `ListNode` classics (`linkedlist2..4`).
   - Tests: `[1, 2, 3]` reverses to `[3, 2, 1]`, empty and single-node lists; merge `[1, 4, 5]` with `[1, 2, 6, 7]`, empty inputs, duplicates; split `[1..=5]` into `([1, 2, 3], [4, 5])`; remove the 2nd from the end; `n > len` leaves the list unchanged.
   - The recursive-drop depth point is already covered by `smartptr1` and `linkedlist1` (including the 200k-node drop test); don't repeat it.
 
-### `61_trees`
+### `61_trees` (built)
 
 Theme: an `Option<Box<Node>>` BST (the LeetCode `Rc<RefCell<TreeNode>>` half was cut).
+
+**As built** (see `exercises/61_trees/`; adversarially reviewed). Deviations and verified corrections:
+
+- `bst1`: Built as the ROADMAP specifies: the iterative Drop is given, and the empty insert/contains fail with E0308. Beyond the ROADMAP tests: exact shape via pre-order, `i32::MIN`/`i32::MAX` keys, a sorted-insert degenerate-spine test, and a 200_000-deep zigzag path built bottom-up in O(n) by the test helper `path`. Reviewer addition: `contains_looks_only_along_the_search_path`, a hand-built broken tree with a key hidden off the search path, so a whole-tree scan `contains` now fails.
+- `bst2`: Deviation from the ROADMAP: besides the empty `next()`, `Bst::iter()` is empty too (a second E0308), so the learner writes the initial left-chain push; a helper method on `InOrder` is allowed. `IntoIterator for &'a Bst` is given code. Laziness is checked white-box (`it.stack.len() <= height` on a 1023-node perfect tree). Items are checked by address. The deep tests are a 200_000-deep chain of left children (catches a recursive helper) plus a zigzag. Reviewer changes: only the header's LeetCode 173 title.
+- `bst3`: Built as the ROADMAP specifies: invert's empty `()` body compiles, and height gives E0308. Height counts nodes (LeetCode 104: empty is 0, a single node is 1). The invert tests compare every node's (key, left, right) by address before and after, so key rewriting or rebuilding fails. Both functions run on a 200_000-deep zigzag built in O(n). The legitimate alternatives pass: VecDeque invert, take-and-reassign swap, and DFS (node, depth) height. Reviewer changes: only the header wording (`insert` (or any search), since bst3 has no `contains`).
+- `bst4`: Unsolved fails with the ROADMAP's E0499 (wording and note verified) plus two E0308s: the empty `remove` and the empty free function `take_min`, which the ROADMAP names but does not list as a TODO. `insert` is given code built on `find_slot`. `remove` must relink the successor NODE (every remaining key keeps its node address). The deep test uses a zigzag plus a root whose successor is 200_000 left links down. Reviewer changes: two non-leaf one-child removal cases in remove_a_node_with_one_child (they catch successor/predecessor-always removal). The header's borrow-rule sentence is made precise (bst1's insert is the counterexample to the old wording). 'textbook C version'. The TODO ends with 'Until you restructure the loop ...'.
 
 #### Binary search tree with `Option<Box<Node>>`: cursor insert, lazy in-order iterator, iterative invert and height, delete
 
@@ -971,9 +1010,18 @@ Theme: an `Option<Box<Node>>` BST (the LeetCode `Rc<RefCell<TreeNode>>` half was
   - *(scope)* bst4 overlaps `borrowck3` (problem case #3): cross-reference it rather than re-explaining.
   - bst2 is the first borrowing `Iter<'a>` over the learner's own container; the mutable counterpart is listed under [Additional topics](#additional-topics-not-yet-verified).
 
-### `62_graphs`
+### `62_graphs` (built)
 
 Theme: graph traversal and grids (the heaps / Dijkstra part was cut; its lessons live in `44_trait_contracts`).
+
+**As built** (see `exercises/62_graphs/`; adversarially reviewed). Deviations and verified corrections:
+
+- `graph1`: Merged per the ROADMAP (scope) note. The ROADMAP's graph1 (bfs + shortest_path), graph3 (Kahn topo_order with BinaryHeap<Reverse<usize>> and CycleError { unordered }) and graph4 (DSU with find and union by size) are now one exercise with five E0308 bodies. To keep it short, Kruskal's `mst_weight` is GIVEN, and its tests exercise the learner's `union`. The path-compression test uses a hand-built 200_000-node chain instead of the ROADMAP's 1_000, so a recursive find overflows the stack. Review change: two assertions added to union_reports_whether_it_merged, so a union that takes parent[x] for the root now fails.
+- `graph2`: The centerpiece, as specified: `Graph { adj, seen }`, a recursive `dfs(&mut self)` over `&self.adj[u]` (E0502, verified wording), plus an empty `has_cycle_directed(&self)` (E0308). Deviation: the deep tests use 200_000 nodes instead of the ROADMAP's 100_000, for margin. The given `count_components` relies on `dfs` keeping the `seen` field. Review changes: the stack-depth paragraph now points to `61_trees` instead of re-teaching it; the has_cycle TODO requires O(V + E). Known pass-throughs, stated in the TODO and hint: cloning a neighbor list inside an ITERATIVE loop, and Kahn's algorithm for the cycle check.
+- `graph3` (dropped): merged into graph1 (Kahn's topo_order with BinaryHeap<Reverse<usize>> and CycleError is graph1 part B), per the ROADMAP (scope) note.
+- `graph4` (dropped): merged into graph1 (the DSU with an iterative path-compressing find and union by size is graph1 part C; Kruskal's mst_weight is given there and tested through union), per the ROADMAP (scope) note.
+- `grid1`: As specified: a run-time failure, where the corner tests panic with "attempt to subtract with overflow". `neighbors` returns `impl Iterator<Item = (usize, usize)>` rather than a Vec, as the bridge to grid2's capture lesson. Added: a brute-force comparison over six grid shapes (rejects saturating_sub), a test with coordinates beyond i32::MAX and isize::MAX (rejects i32 casts and `as isize` arithmetic), and a GIVEN grid BFS `min_steps` whose maze tests start in the corner. The Index/IndexMut fold-in lives in grid2, where the `Grid` type is, so grid1 keeps the ROADMAP's pure run-time failure. No review changes to code or tests.
+- `grid2`: Deviations: (1) the iterative flood fill in `count_islands` is GIVEN. The ROADMAP's E0502 on `self.cells` requires the write to sit inside the neighbor loop of an explicit-stack fill, so the learner's work is `+ use<>`. The 400x400 all-land test rejects a recursive rewrite (verified stack overflow). (2) Added test the_neighbor_iterator_does_not_borrow_the_grid: it mutates `grid.cells` and drops a grid while an iterator is alive, which forces the signature fix; it adds E0502 + E0597 to the unsolved errors. (3) The operator-overloading fold-in is here: Index<(usize, usize)> / IndexMut on `Grid` (E0608), a read/write test, and two #[should_panic] tests for `(0, cols)` (read and write). Accepted alternatives: `+ 'static`, and `Box<dyn Iterator>` (which allocates on every call). rustc's own help line prints `+ use<>`, so the first part is guided by the compiler. No review changes to code or tests.
 
 #### Graph algorithms: BFS with paths, iterative DFS and cycle detection, Kahn topological sort, union-find
 
@@ -1002,9 +1050,15 @@ Theme: graph traversal and grids (the heaps / Dijkstra part was cut; its lessons
   - This is the single home for the edition-2024 `+ use<>` lesson now that `impl-trait-capture-rpitit` is cut. Verified facts from that cut item for the README: `use<>` on a generic fn errors with "`impl Trait` must mention all type parameters in scope in `use<...>`"; the 2024 capture note reads "Rust 2024 has adjusted the `impl Trait` lifetime capture rules"; the 2021 `+ '_` / E0700 story only applies when the hidden type actually borrows.
   - Fold-in from the cut `operator-overloading`: one extra test implementing `Index<(usize, usize)>` / `IndexMut` on the grid. Verified: indexing before the impl exists is E0608 "cannot index into a value of type `Grid`"; add a `#[should_panic]` for `g[(0, g.w)]`, which must panic on the column check even though `row * w + col` is in range.
 
-### `64_parsing`
+### `64_parsing` (built)
 
 Theme: lexer, recursive descent and an AST.
+
+**As built** (see `exercises/64_parsing/`; adversarially reviewed). Deviations and verified corrections:
+
+- `parse1`: Deviation from the ROADMAP: the iterator's Item is `Result<(usize, Token<'a>), LexError>` instead of `Result<Token<'a>, LexError>`, so each token comes with its byte offset, like `char_indices` (LALRPOP uses a (start, token, end) triple). parse2 and parse3 need the offset to report `UnexpectedToken { pos }` and `TrailingInput { pos }`. Tokens are Num(i64), Ident(&'a str) and + - * / ( ). LexError is { UnexpectedChar { ch, pos }, NumberTooLarge { pos } }, with Display and Error. The given helpers `is_ident_start` / `is_ident_continue` pin the identifier grammar (Unicode alphabetic / alphanumeric, or `_`); digits are ASCII only. After an error the lexer resumes. All ROADMAP tests are present, plus tests for Unicode whitespace offsets, ASCII-only digits, leading zeros, resumption after errors, and a 3000-case model. Reviewer change: `tokens_outlive_the_lexer` now takes at most src.len() + 1 items, so a lexer that stops consuming fails that test instead of collecting forever.
+- `parse2`: Deviations from the ROADMAP: the starter is parse1's lexer (given) plus a Parser with given `peek`, `bump` and a `nested` depth guard (MAX_DEPTH = 128, serde_json's default recursion limit). The right-recursive starter recurses through `nested`, so a long flat chain fails deterministically with TooDeep instead of overflowing the stack. EvalError adds Lex(LexError), UnexpectedToken { pos } and TooDeep to the ROADMAP's UnexpectedEnd, TrailingInput { pos }, DivByZero and Overflow, with Display, Error::source and From<LexError>. Identifiers are UnexpectedToken, since the calculator has no variables. The unsolved failures include exactly the ROADMAP's 8-3-2 = 7 (expected 3) and 8/4/2 = 4 (expected 1). 100_000 minus signs may give Ok(1) or TooDeep, so a loop-based unary minus passes. Reviewer change: the `term` and `factor` TODOs now name their failing tests.
+- `parse3`: Deviations from the ROADMAP: the starter fails with two E0308s (an empty `from_str` AND an empty `Display::fmt`), where the ROADMAP names only from_str. `eval` is given rather than a TODO, because parse2 already drills checked arithmetic. Variables were added (`Var(String)`, `eval(&self, &HashMap<&str, i64>)`), so the lexer's identifiers get used and the point that FromStr output cannot borrow its input becomes concrete. Errors are split into ParseError (Lex, UnexpectedEnd, UnexpectedToken { pos }, TrailingInput { pos }, TooDeep) and EvalError (UnknownVariable, DivByZero, Overflow). Expr is `Binary(BinOp, Box<Expr>, Box<Expr>)`, `Neg`, `Num` and `Var`, with no Clone. The ROADMAP's 10-input Display round trip is `display_round_trips`. Also tested: tree shapes, 2000 random trees reparsed from both a minimal-parentheses printer and Display, and TooDeep for 100_000 nested parentheses or minus signs. The header and README note, verified but not tested, that a flat 100_000-term chain parses but overflows the stack when its tree is dropped.
 
 #### Tokenizer and recursive-descent calculator: borrowed tokens, left associativity, never-panicking evaluation
 
@@ -1020,9 +1074,17 @@ Theme: lexer, recursive descent and an AST.
   - `IntErrorKind::PosOverflow` is stable.
   - Tests: parse1 exact tokens, `"héllo"` as one identifier, `'$'` errors with its byte position, a huge literal errors, identifiers borrow the source; parse2 precedence, parentheses, unary minus, and `UnexpectedEnd`, `TrailingInput { pos }`, `DivByZero`, `Overflow` for `MIN / -1`, with nothing panicking; parse3 tree shape and a `Display` round trip for 10 inputs.
 
-### `65_performance`
+### `65_performance` (built)
 
 Theme: allocation-aware APIs, clippy-graded.
+
+**As built** (see `exercises/65_performance/`; adversarially reviewed). Deviations and verified corrections:
+
+- `perf1`: Reviewer change: strict_clippy is now TRUE (the builder had false). This follows the ROADMAP note that warn-by-default lints go through strict_clippy, and it catches `write!(out, "{}", format!(..))` via `format_in_format_args`. The in-file `#![deny(clippy::format_push_string)]` stays, because that lint is allow-by-default (pedantic) and `-D warnings` does not enable it. Unsolved, perf1 FAILS its tests (2 of 4) as well as clippy. The clippy stage was checked on an intermediate state: pointer bug fixed with `out.clear(); out.push_str(&render(rows))`, all 4 tests pass, and clippy fails with 3 x format_push_string. Dedupe with 67_code_review/review2 (builder's deviation, kept): the starter has no index loop, so needless_range_loop is not graded here. ROADMAP correction: on clippy 0.1.96, `format_push_string` is `pedantic`, not `restriction` (verified with -W clippy::pedantic vs -W clippy::restriction). Graded by clippy: registered with `strict_clippy = true`.
+- `perf2`: Dedupe with 67_code_review/review2 (builder's deviation, kept): Clippy does not grade `ptr_arg` here. The tests are callers that a `&String` / `&Vec<String>` signature shuts out (literals, sub-slices, arrays, a `Vec<&str>`), so the starter fails with 15 x E0308 instead of the ROADMAP's pointer mismatch plus ptr_arg. Once the signatures are fixed, heap-pointer checks (`as_ptr_range().contains` and exact offsets) grade the borrowed return. The ROADMAP's two functions are kept. The Cow part stays in `45_sized_deref/cow1`, as the ROADMAP note says. Reviewer changes: the count_long TODO now also requires 'allocate nothing per word'; the hint names the uncatchable `&[impl ToString]` wrong turn and says the IntoIterator alternative draws Clippy warnings in the tests. strict_clippy=false: no warn-by-default lint grades it.
+- `perf3`: Refocused per the *(scope)* dedupe with review2 (builder, kept). `needless_range_loop` is not graded; clippy 0.1.96 does not even fire it on dot's two-slice index loop (re-verified). Kept `dot` (length check before `zip`, three should_panic tests) and `copy_prefix` (`[1, 2, 0, 0]`, a longer src, edge cases, then `manual_memcpy`). Added `append_chunks` (`reserve` once + `extend_from_slice`), graded by: a capacity bound of total + total/8 (push gives 2048, per-chunk extend or flat_map 1600, reserve 1025; re-verified); pointer and capacity unchanged for a buffer with room; capacity 0 when nothing is appended. strict_clippy=true because `manual_memcpy` is warn-by-default. Unsolved, perf3 FAILS its tests (6 of 11). The clippy stage was checked on the intermediate state: with a min-length index copy loop, all 11 tests pass, strict clippy fails with manual_memcpy only, and plain clippy passes. Reviewer changes: header 'exactly as with push' is now 'much as it does with push'; the hint now names per-chunk reserve_exact (quadratic, uncatchable) and reserve-then-push, and the zip-copy sentence was reworded. Graded by clippy: registered with `strict_clippy = true`.
+- Correction: on clippy 0.1.96 `format_push_string` is in the `pedantic` group, not `restriction`. It is still allow-by-default, so `perf1` keeps its in-file `#![deny(clippy::format_push_string)]`.
+- No test can see a temporary allocation (a bound `format!`, a `concat()`, a per-chunk `reserve_exact`) without a counting allocator, which needs `unsafe`. The TODOs and hints name each such variant, and the planned `alloc-perf-lab` is where zero allocations get proven.
 
 #### Allocation-aware code: buffer reuse, `&str` and `&[T]` params, borrowed returns, iterator vs index loops
 
@@ -1039,9 +1101,19 @@ Theme: allocation-aware APIs, clippy-graded.
   - The `Cow` part of the original proposal moved to `cow1`; perf2 keeps only the borrowed-return and parameter-type parts.
   - *(scope)* perf3 overlaps `review2` (the same clippy lints); dedupe.
 
-### `68_mock_interviews`
+### `68_mock_interviews` (built)
 
 Theme: statement-first timed sets with part-2 follow-ups.
+
+**As built** (see `exercises/68_mock_interviews/`; adversarially reviewed). Deviations and verified corrections:
+
+- `set_trie`: Statement-first, 25-minute time box, as in the ROADMAP. The follow-up tests cover a prefix that leads nowhere, a word that is its own prefix, a limit of 0 and usize::MAX, the empty prefix and the empty word, and non-ASCII words. Deviation from the ROADMAP: it says "über" is passed only by a char-keyed trie. The 26-array does fail (it panics), but a 256-way byte trie is also correct and passes, so the test pins "not lowercase-ASCII-only". Review fixes: the sort-order comment now says bytes rather than code points, and the hint says drop glue rather than derived Drop and adds the BTreeSet/Vec caveat.
+- `set_edit_distance`: Statement-first, 20-minute time box. The ROADMAP tests are all there (kitten/sitting 3, empty vs abc 3, café/cafe 1). Added on top: ab/ba = 2 (pins Levenshtein), composed vs decomposed café = 2, 4-byte chars, 3_000-char and 100_000-char inputs, and 2_000 random pairs checked against a full-table model. O(min(n, m)) memory stays rubric-only, because no safe test can observe it. Review fixes: the header no longer gives the approach away, the timing comment is corrected for the debug profile, and the comment and hint now separate normalization from graphemes.
+- `set_kv_tx`: Statement-first, 35-minute time box. COMMIT merges only the innermost transaction into its parent. Added beyond the ROADMAP: the pointer-identity test, 1_000-level nesting, a model test with 15_000 random operations, and (added in review) `begin_commit_and_rollback_never_copy_the_store`, a time budget over 30_000 keys (see the last bullet). The budget test exists because a copy per begin that shares values through `Rc<str>`, or copies on write, passed every original test. The reference runs at about 1.4x a plain `HashMap` doing the same writes; copying stores run 850-1,900x as long and fail within about 2 s. The statement now pins the allocation instead of the `String` type.
+- `set_kv_tx_part2`: Applies the ROADMAP no-spoiler note: the starter repeats only part 1's signatures, with todo!() bodies and an empty struct, and the solution holds the full reference. Deviation: rustc 1.96 words the E0599 as "`Kv` is not an iterator", not "no method named `count`" (re-verified). Six part-1 tests sit above the part-2 banner. Review fix: the budget test now makes a transaction rewrite all 40_000 keys before 40_000 `count` calls, then runs 40_000 rollback cycles. Before, a count that walked the open transactions' written keys passed, and the fastest full scan beat the budget by only about 2x. Now the reference runs at about 2.5x the plain-map baseline, while every scan or recount variant runs 12,000-37,000x as long and fails within about 4 s.
+- Correction: `set_kv_tx_part2` fails unsolved with E0599 worded "`Kv` is not an iterator" (rustc resolves `count` toward `Iterator::count`), not "no method named `count`".
+- Correction: "`über`, which only a char-keyed trie passes" overstates it. A 256-way byte-keyed trie is also correct and passes, because every `&str` prefix ends on a char boundary; the test pins "not lowercase-ASCII-only".
+- The two budget tests are the course's only timed tests, and they are relative, not absolute: `dev check` runs every solution at once, so a fixed wall-clock limit could fail a correct solution on a busy CI runner. A `Budget` helper alternates chunks of 20 steps on the `Kv` with the same steps on a plain `HashMap<String, String>` and fails only when the `Kv` is more than 64x slower both in total (plus 500 ms of slack) and in each of the last 5 chunks. Load pauses make single chunks look slow, never five in a row. The reference passed every run (20 sequential, 32 concurrent copies, and 32 copies next to 400 busy loops; worst compared ratio 4.0). All seven wrong designs (Rc-sharing snapshots, copy-on-write maps, key-scanning `count`, a recounting `rollback`) fail every run.
 
 #### Timed interview sets: statement-first problems with rubric hints and part-2 follow-ups
 
@@ -1125,7 +1197,7 @@ Theme: `unsafe`, Miri, FFI, allocators, loom, and testing a library from outside
   - Add the new loom tests to the CI grep guard, which currently only matches `loom_lab::tests::`.
   - Correct placement: it needs unsafe `AtomicPtr` reclamation and loom.
   - Tests: LIFO order, a stress run, and a drop counter proving each element is dropped exactly once.
-  - Receives: the store-buffering litmus questions from `send-sync-ordering-quiz`; the Treiber-stack ABA follow-up from `atomics-cas-aba`; and false sharing from the cut `layout-niche-padding`. Verified layout facts for the latter: `#[repr(align(128))] struct CachePadded<T>(T)` has align 128, `[CachePadded<AtomicU64>; 2]` is 256 bytes, and `(AtomicU64, AtomicU64)` is 16 bytes (explain why 128 on x86_64 / aarch64).
+  - Receives: the store-buffering and IRIW litmus questions from `send-sync-ordering-quiz` (dropped from `quizzes/quiz5`; the IRIW question must name the load ordering and say whether it asks about hardware or language guarantees); the Treiber-stack ABA follow-up from `atomics-cas-aba`; and false sharing from the cut `layout-niche-padding`. Verified layout facts for the latter: `#[repr(align(128))] struct CachePadded<T>(T)` has align 128, `[CachePadded<AtomicU64>; 2]` is 256 bytes, and `(AtomicU64, AtomicU64)` is 16 bytes (explain why 128 on x86_64 / aarch64).
   - *(scope)* Cross-link `atomics-cas-aba`, `myarc` and `loom_lab` rather than repeating them.
 
 #### Lab: testing a library from outside: doctests, compile_fail guarantees, integration tests, proptest, semver
@@ -1267,15 +1339,15 @@ Condensed from the inventory of this repo's conventions. Paths are relative to t
 1. **Files.** One flat file per exercise at `exercises/NN_topic/<name>.rs` plus a mandatory `exercises/NN_topic/README.md` (`rustlings-macros` `include_bytes!`-embeds it, so the build fails without it). Mirror each exercise at `solutions/NN_topic/<name>.rs`; CI runs `cargo dev check --require-solutions`. Nothing else may live in those directories.
 2. **Names.** 1-32 chars of `[A-Za-z0-9_]`, unique across the whole course. Avoid upstream clashes by continuing a number (`lifetimes7`) or using a distinct stem (`iter`, `err`, `smartptr`).
 3. **File shape.** Line 1 header (`// Module 1 · Borrow-checker errors — part N: <topic> (EXXXX).`), then `//` paragraphs explaining the *why*, then `use` lines and the given code. At each change site a `// TODO:` block (the literal `// TODO` is required by `dev check`) that ends with "Until you ..., this exercise will not compile." Then `fn main()` whose body is the single comment `// You can optionally experiment here.` (the literal `fn main()` is required). Then `#[cfg(test)] mod tests { use super::*; ... }` with descriptive snake_case test names and explanatory comments.
-4. **Tests.** Part of the exercise; the learner never edits them. Cover edge cases (empty, full, wraparound, collisions, overflow boundaries, stale wakeups). Compare floats as `(a - b).abs() < 1e-9`. Concurrency tests are finite, join every thread and avoid sleeps; watchdogs may fire only on the unsolved path, since rustlings has no test timeout.
+4. **Tests.** Part of the exercise; the learner never edits them. Cover edge cases (empty, full, wraparound, collisions, overflow boundaries, stale wakeups). Compare floats as `(a - b).abs() < 1e-9`. Concurrency tests are finite, join every thread and avoid sleeps; watchdogs may fire only on the unsolved path, since rustlings has no test timeout. Keep every test binary fast in the debug profile (well under 5 s). A test that must bound complexity compares against a baseline measured in the same test (the `Budget` helper in `68_mock_interviews/set_kv_tx`), never an absolute wall-clock limit, because `dev check` runs every solution at once.
 5. **Fails while unsolved.** `dev check` runs build, then test, then `clippy --profile test`, then the binary; any failure counts as unsolved, and a fully passing unsolved exercise is an error (only `intro1` sets `skip_check_unsolved`). Accepted mechanisms: an empty body whose `()` mismatches the return type (E0308), the concept's own diagnostic, or a deterministic runtime test failure. Never rely on a race showing up (see `atomics4`).
 6. **Recall, not recognition (module-37 rule, recommended for new interview modules).** The TODO names the diagnostic (E-code plus short rustc wording) and states the requirement and constraints (for example "no `.clone()`, no `unsafe`, don't change the tests") but does not spell out the fix; the `info.toml` hint carries the full fix. Domain types used to demonstrate borrow errors don't derive `Clone`, so "clone everything" is not an escape hatch.
 7. **Crate constraints** (dev/Cargo.toml): edition 2024, std only, single file. Lints: `unsafe_code = "forbid"`, `unstable_features = "forbid"`, `dead_code = "allow"`; clippy `todo = "forbid"`, `empty_loop = "forbid"`, `infinite_loop = "deny"`, `mem_forget = "deny"`, `disallowed_methods = "allow"`. Profiles use `panic = "abort"`, but test targets still unwind. Tests run in the debug profile, so overflow checks are on.
 8. **Solution file.** Identical header comments and tests; each TODO block replaced by a short comment explaining why the fix works. It must pass build, tests, `clippy --profile test -D warnings` (test code included), running `main`, and `rustfmt --check --edition 2024`.
-9. **`info.toml` entry.** A section comment (e.g. `# MODULE 4 · ATOMICS — ...`), then `[[exercises]]` with `name`, `dir` and a non-empty `hint` (restate the error with its E-code and why it happens, give the fix, often as full code in fences, plus cross-links). Optional keys: `test = false`, `strict_clippy = true`, `skip_check_unsolved = true`. Insert the entries at the right pedagogical spot; the current learner order is 24, 25, 26, 32, 33, 34, 35, 27, 28, 29, 30, 36, 31.
+9. **`info.toml` entry.** A section comment (e.g. `# MODULE 4 · ATOMICS — ...`), then `[[exercises]]` with `name`, `dir` and a non-empty `hint` (restate the error with its E-code and why it happens, give the fix, often as full code in fences, plus cross-links). Optional keys: `test = false`, `strict_clippy = true`, `skip_check_unsolved = true`. Insert the entries at the right pedagogical spot; the learner order is the order of `info.toml` (summarized in `deep-dive/COURSE.md`). Set `strict_clippy = true` whenever warn-by-default clippy lints do the grading: without it rustlings runs clippy without `-D warnings`.
 10. **`dev/Cargo.toml` bin list.** Never edit it by hand: run `cargo dev update` (debug build). Validate with `cargo dev check --require-solutions` and `cargo run -- run <name>`; don't use `--release`, which refuses to run inside the source repo.
 11. **Module README.** H1 `# Module N · Title: subtitle`; a `>` blockquote placing it in the course and stating `std + 100% safe` (and stable); `## Core Ideas`; optional concept sections; `## Exercise Path` as `1. **name** — what is broken and what to do`; `## Further Reading` (Book, std docs, Reference, external resources); cross-link the related lab. Must pass the rumdl CI lint (`.rumdl.toml` disables MD013 and MD057).
-12. **Course docs.** Add rows to the right `### Module N · ...` table in `deep-dive/COURSE.md` (or a new section with a table and one sentence of rationale), including `deep-dive/` rows for companion labs. Update the hard-coded `24_ownership_model` through `36_atomics` range in the root `README.md`; optionally add the module to `exercises/README.md`. Tick the module off in [Status](#status).
+12. **Course docs.** Add rows to the right `### Module N · ...` table in `deep-dive/COURSE.md` (or a new section with a table and one sentence of rationale), including `deep-dive/` rows for companion labs. Update the hard-coded `24_ownership_model` through `68_mock_interviews` range in the root `README.md`; optionally add the module to `exercises/README.md`. Tick the module off in [Status](#status).
 
 Standalone checks before integration (run in a scratch directory, never inside the repo):
 
