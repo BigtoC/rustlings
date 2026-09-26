@@ -5485,3 +5485,63 @@ instead of the max (`(2, 3)` shrinks `(1, 10)`); no sort, or sorting by end
 (`(1, 10)` gets merged into `(2, 3)` as `(2, 10)`); swapping the two `dedup_by`
 arguments. `sort_by_key` and `sort_unstable()` on the whole tuples pass too;
 `sort_by_key` just allocates a buffer it does not need."""
+
+[[exercises]]
+name = "window4"
+dir = "63_slices_strings"
+hint = """
+Two empty bodies (E0308) and one overflow.
+
+`count_in_range`: find the first index holding a value `>= lo`, then count the
+values `< hi` in the suffix that starts there. That suffix holds only values
+`>= lo`, so a reversed range counts 0 without any subtraction:
+```
+let start = sorted.partition_point(|&x| x < lo);
+sorted[start..].partition_point(|&x| x < hi)
+```
+`sorted.partition_point(|&x| x < hi).saturating_sub(sorted.partition_point(|&x| x < lo))`,
+or an early `if lo >= hi { return 0; }`, works too. A plain subtraction panics
+with "attempt to subtract with overflow" on `(5, 2)`. `binary_search` is not a
+lower bound: with duplicates it returns any matching index (`[2; 8].binary_search(&2)`
+is `Ok(7)` on Rust 1.96, so counting from it gives 1 instead of 8). And `<=` in
+the second call would count `hi` itself, a closed range.
+
+`first_true`: once `lo` passes the middle of `0..u64::MAX`, `lo + hi` overflows
+("attempt to add with overflow"). Replace the midpoint:
+```
+let mid = lo.midpoint(hi);
+```
+or `let mid = lo + (hi - lo) / 2;`. Both stay inside `lo..hi` whenever `lo < hi`,
+so `hi = mid` and `lo = mid + 1` keep the half-open invariant.
+`lo.wrapping_add(hi) / 2` and `lo.saturating_add(hi) / 2` put `mid` below `lo`:
+the tests catch the probe outside the range (in release, such a search can loop
+forever).
+
+`min_ship_capacity`: a capacity check that loads greedily is monotone (a bigger
+ship never needs more days), so binary search the smallest capacity that fits.
+Nothing below the heaviest package fits, and the total weight (all in one day)
+always fits, so the total is the right `hi`: if nothing smaller fits,
+`first_true` returns it.
+```
+let fits = |cap: u64| {
+    let (mut used, mut load) = (1, 0);
+    for &w in weights {
+        let w = u64::from(w);
+        if load + w > cap {
+            used += 1;
+            load = 0;
+            if used > days {
+                return false;
+            }
+        }
+        load += w;
+    }
+    true
+};
+let heaviest = weights.iter().copied().max().map_or(0, u64::from);
+let total = weights.iter().copied().map(u64::from).sum();
+first_true(heaviest, total, fits)
+```
+`hi = total + 1` also works. Starting the search at 0 or 1 is wrong: a check that
+never looks at single packages then says a ship smaller than the heaviest package
+fits. Summing in `u32` overflows on three `u32::MAX` packages."""
