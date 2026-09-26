@@ -6932,6 +6932,37 @@ Proving zero allocations takes a counting global allocator, which needs `unsafe`
 
 `let mut buf = std::mem::take(out);`, fill `buf`, then `*out = buf;` is fine: the same allocation leaves and comes back. `shrink_to_fit()`, a new `String::with_capacity(..)`, or `mem::swap` with a new `String` fail the pointer or capacity checks."""
 
+[[exercises]]
+name = "perf2"
+dir = "65_performance"
+hint = """
+E0308 first. `&String` and `&Vec<String>` accept only a borrowed `String` or `Vec<String>`, and the tests are callers that hold literals, slices of longer strings, arrays and a `Vec<&str>`. Take the most general borrowed form, and return views into the line instead of copies:
+```
+fn tokens(line: &str) -> Vec<&str> {
+    line.split_whitespace().collect()
+}
+
+fn count_long(words: &[impl AsRef<str>], min_chars: usize) -> usize {
+    words
+        .iter()
+        .filter(|word| word.as_ref().chars().count() >= min_chars)
+        .count()
+}
+```
+A `&String` argument still works: deref coercion turns it into a `&str` at the call (see `45_sized_deref`). With one reference parameter, elision gives the `Vec<&str>` the line's lifetime, so the words cannot outlive the line. `split_whitespace` already yields `&str`s into `line`. The `.map(|word| word.to_string())` was the copy that `tokens_borrow_from_the_line` catches.
+
+In `count_long` the element type is what varies (`String` in one call, `&str` in another), so make it generic: `&[impl AsRef<str>]`, or spelled out, `fn count_long<S: AsRef<str>>(words: &[S], min_chars: usize)`. `&[&str]` refuses the `Vec<String>` (E0308 "expected `&[&str]`, found `&Vec<String>`"), and `&[String]` refuses the literals: a slice cannot be converted element by element without building a new one. `Borrow<str>` or `Deref<Target = str>` work as the bound too. `words: impl IntoIterator<Item = impl AsRef<str>>` also compiles and passes. Clippy then warns about the tests' `&literals` (`needless_borrows_for_generic_args`: an array can be passed by value), so a slice is the better fit here.
+
+Wrong turns the tests catch:
+- keeping `Vec<String>` (the words live somewhere else);
+- leaking the strings to get `&'static str`s (still copies);
+- `split(' ')` (tabs, runs of spaces) and `split_ascii_whitespace` (U+3000 and U+00A0);
+- `.len()` instead of `.chars().count()` ("héllo" is 6 bytes).
+
+One they cannot catch: `&[impl ToString]` with `word.to_string().chars().count()` compiles and passes, but allocates a `String` per word just to count it.
+
+A `Vec<Cow<str>>` whose words are all `Cow::Borrowed` passes as well, but a `Cow` is for results that are only sometimes owned (`45_sized_deref/cow1`). The opposite case, a function that STORES the string, takes `impl Into<String>` (`47_type_level/builder1`)."""
+
 # MODULE 5 · Checked Math: Overflow-Safe `mul_div`, Rounding Direction, Fixed Point and Determinism
 
 [[exercises]]
