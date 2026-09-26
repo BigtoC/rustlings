@@ -5304,3 +5304,79 @@ const IF_LET_ELSE_CAN_RELOCK_2024: bool = true;
 const LET_STMT_CAN_RELOCK: bool = true;
 ```
 See also `debugging6` (the `RefCell` version) and `debugging7` (`while let` and the 2024 `if let` rules)."""
+
+# MODULE 5 · Slices and Strings: Two Pointers, Unicode Windows, Intervals, Binary Search
+
+[[exercises]]
+name = "window1"
+dir = "63_slices_strings"
+hint = """
+Two panics, one per integer rule, plus an empty function.
+
+`three_sum` first (E0308, the body is empty). Sort a copy, fix the first element,
+and run two pointers over the rest, skipping repeated values so each triple is
+found once:
+```
+fn three_sum(nums: &[i32]) -> Vec<[i32; 3]> {
+    let mut v = nums.to_vec();
+    v.sort_unstable();
+    let mut out = Vec::new();
+    for (a, &first) in v.iter().enumerate() {
+        if a > 0 && first == v[a - 1] {
+            continue;
+        }
+        let (mut lo, mut hi) = (a + 1, v.len() - 1);
+        while lo < hi {
+            let sum = i64::from(first) + i64::from(v[lo]) + i64::from(v[hi]);
+            match sum.cmp(&0) {
+                Ordering::Less => lo += 1,
+                Ordering::Greater => hi -= 1,
+                Ordering::Equal => {
+                    out.push([first, v[lo], v[hi]]);
+                    lo += 1;
+                    while lo < hi && v[lo] == v[lo - 1] {
+                        lo += 1;
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+```
+Skipping a repeated second value is enough: the same triple would need the same
+first and second values. `v.len() - 1` is safe here because the loop body only
+runs when `v` is not empty. Collecting the triples into a `BTreeSet<[i32; 3]>`
+(sorted and deduplicated for free) also passes. You cannot simply reuse
+`two_sum_sorted` with target `-first`: it finds only one pair, and `-i32::MIN`
+overflows.
+
+`two_sum_sorted`: on `&[]`, `nums.len() - 1` is `0 - 1` on a `usize` ("attempt to
+subtract with overflow"), and `nums[i] + nums[j]` overflows for pairs like
+`1 + i32::MAX` ("attempt to add with overflow"). Ask for the last index instead of
+assuming one, and compare in `i64`, where every sum of two `i32`s is exact:
+```
+let mut i = 0;
+let mut j = nums.len().checked_sub(1)?;
+let target = i64::from(target);
+while i < j {
+    let sum = i64::from(nums[i]) + i64::from(nums[j]);
+    match sum.cmp(&target) {
+        Ordering::Equal => return Some((i, j)),
+        Ordering::Less => i += 1,
+        Ordering::Greater => j -= 1,
+    }
+}
+None
+```
+`if nums.len() < 2 { return None; }` works as the guard too, and so does a
+half-open scan: `let (mut i, mut j) = (0, nums.len()); while i + 1 < j { .. nums[j - 1] .. }`,
+returning `(i, j - 1)`. A `HashMap` from value to index also passes, but it
+gives up the O(1) space that the sorted input buys you.
+
+What fails: `nums[i].checked_add(nums[j])?` gives up at the first overflow and
+misses `(0, 1)` in `[1, 4, i32::MAX - 1, i32::MAX]`; `saturating_add` makes
+`1 + i32::MAX` equal to a target of `i32::MAX`; `wrapping_add` wraps a sum that
+leaves the `i32` range around to the other sign, so the pointers move the wrong
+way (that is what the original code does in a release build). Integer overflow
+basics are in `31_debugging/debugging2`."""

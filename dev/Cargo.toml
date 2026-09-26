@@ -446,6 +446,8 @@ bin = [
   { name = "debugging7_sol", path = "../solutions/31_debugging/debugging7.rs" },
   { name = "debugging8", path = "../exercises/31_debugging/debugging8.rs" },
   { name = "debugging8_sol", path = "../solutions/31_debugging/debugging8.rs" },
+  { name = "window1", path = "../exercises/63_slices_strings/window1.rs" },
+  { name = "window1_sol", path = "../solutions/63_slices_strings/window1.rs" },
 ]
 
 [package]
