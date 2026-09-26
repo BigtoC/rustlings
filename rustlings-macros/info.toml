@@ -2005,6 +2005,35 @@ is that ownership flows one way (parent to children) and back-pointers only
 observe; an arena addressed by index (`59_arena`) avoids reference counting
 altogether."""
 
+# MODULE 1 · Interior Mutability: Cell, OnceCell, OnceLock, LazyLock and Thread-Locals
+
+[[exercises]]
+name = "cell1"
+dir = "40_interior_mutability"
+hint = """
+Part A — `get`: E0594 "cannot assign to `self.hits`, which is behind a `&` reference". A `&self` method cannot change a plain field. rustc's `help:` (`&mut self`) is the wrong fix here: the tests call `get` through an `Rc<Cache>` and through two `&Cache` at once, so it only moves the error into the tests (E0596 "cannot borrow data in an `Rc` as mutable", "cannot borrow `*a` as mutable, as it is behind a `&` reference"). A `Copy` counter that one thread owns needs `Cell<u32>`:
+```
+hits: Cell<u32>,                   // the field
+hits: Cell::new(0),                // in `new`
+self.hits.update(|hits| hits + 1); // in `get`
+self.hits.get()                    // in `hits()`
+```
+`self.hits.set(self.hits.get() + 1)` does the same as `update` (stable since 1.88). `Cell<u32>` is `repr(transparent)`: exactly the layout of a `u32`. A `RefCell<u32>` or `Mutex<u32>` compiles too, but `the_cells_are_no_bigger_than_their_values` rejects it: the borrow flag or the lock makes the field bigger than a `u32`. An `AtomicU32` would pass the tests, but it pays for synchronization that a single-threaded cache never uses, which is why the TODO rules it out.
+
+Part B — `remember` and `take_last`: E0599 "the method `get` exists for struct `Cell<String>`, but its trait bounds were not satisfied" (`String: Copy`). `Cell::get` returns a bitwise copy, and for a `String` that would mean two owners of one heap buffer. Move values in and out instead. `replace` is `mem::replace` and `take` is `mem::take`, both through a shared reference:
+```
+fn remember(&self, key: String) -> String {
+    self.last.replace(key)
+}
+
+fn take_last(&self) -> String {
+    self.last.take()
+}
+```
+(`self.last.replace(String::new())` does the same as `take()`, and `let old = self.last.take(); self.last.set(key); old` the same as `replace`.) Cloning is out twice over: a `Cell<String>` never lends you a `&String` to clone from, and the tests compare heap pointers. A `RefCell<String>` has `replace` and `take` too, but the size test rejects its borrow flag. When you need to READ a non-`Copy` value without taking it out, reach for `RefCell` (a guard, `26_smart_pointers_deep/smartptr3`) or `OnceCell` (write once, `cell2`).
+
+Why rustc lists the E0599s first: all type checking runs before borrow checking, and a function body that fails type checking is not borrow-checked at all."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
