@@ -332,6 +332,8 @@ bin = [
   { name = "seams1_sol", path = "../solutions/50_testing_seams/seams1.rs" },
   { name = "seams2", path = "../exercises/50_testing_seams/seams2.rs" },
   { name = "seams2_sol", path = "../solutions/50_testing_seams/seams2.rs" },
+  { name = "seams3", path = "../exercises/50_testing_seams/seams3.rs" },
+  { name = "seams3_sol", path = "../solutions/50_testing_seams/seams3.rs" },
   { name = "linkedlist1", path = "../exercises/27_data_structures/linkedlist1.rs" },
   { name = "linkedlist1_sol", path = "../solutions/27_data_structures/linkedlist1.rs" },
   { name = "ringbuffer1", path = "../exercises/27_data_structures/ringbuffer1.rs" },

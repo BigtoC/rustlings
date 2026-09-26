@@ -3613,6 +3613,62 @@ compare the whole intervals with the room left (`capacity - tokens`) in `u128`: 
 fill it, set `tokens = capacity` and `last = now`, otherwise add them and advance `last`
 by exactly that many intervals."""
 
+[[exercises]]
+name = "seams3"
+dir = "50_testing_seams"
+hint = """
+E0308 "mismatched types" three times: the bodies are empty. One way to write them:
+```
+fn insert(&mut self, key: K, value: V, ttl: Duration) -> Option<V> {
+    let now = self.clock.now();
+    let expires_at = now.saturating_add(ttl);
+    match self.entries.insert(key, Entry { value, expires_at }) {
+        Some(old) if now < old.expires_at => Some(old.value),
+        _ => None,
+    }
+}
+
+fn get<Q>(&mut self, key: &Q) -> Option<&V>
+where
+    K: Borrow<Q>,
+    Q: Hash + Eq + ?Sized,
+{
+    let now = self.clock.now();
+    let expired = self.entries.get(key).is_some_and(|e| now >= e.expires_at);
+    if expired {
+        self.entries.remove(key);
+        return None;
+    }
+    self.entries.get(key).map(|e| &e.value)
+}
+
+fn purge_expired(&mut self) -> usize {
+    let now = self.clock.now();
+    let before = self.entries.len();
+    self.entries.retain(|_, e| now < e.expires_at);
+    before - self.entries.len()
+}
+```
+`now + ttl` panics with "overflow when adding durations" for `Duration::MAX`;
+`saturating_add` (or `checked_add(ttl).unwrap_or(Duration::MAX)`) turns it into "never".
+`HashMap::insert` replaces the whole entry, deadline included, and returns the old one,
+which is handed out only if it was still live.
+
+In `get`, the one-lookup version (look the key up, `return Some(&e.value)` if it is
+fresh, otherwise `self.entries.remove(key)`) is E0502 "cannot borrow `self.entries` as
+mutable because it is also borrowed as immutable": a borrow that might be returned counts
+as live on the `remove` path too. That is NLL problem case #3, as in
+`37_borrowck_errors/borrowck3`. Decide first with a borrow that ends at once (a `bool`),
+then borrow again only on the path that returns. The entry API does not help here:
+`entry` needs an owned `K`, and `get` only has a `&Q`. A let chain (edition 2024:
+`if let Some(e) = self.entries.get(key) && now >= e.expires_at { .. }`) works too,
+because `e` is last used in the condition, so its borrow is over before the `remove`.
+
+The deadline is inclusive everywhere (`now >= expires_at` means expired): in `get`, in
+what `insert` returns and in `retain`. Lazy expiry keeps `get` O(1) but leaves untouched
+dead entries in memory; `purge_expired` is the eager half, a full O(n) pass meant to run
+now and then (a min-heap of deadlines avoids the full pass)."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
