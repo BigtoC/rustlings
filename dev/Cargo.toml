@@ -240,6 +240,8 @@ bin = [
   { name = "raii4_sol", path = "../solutions/39_drop_raii/raii4.rs" },
   { name = "cell1", path = "../exercises/40_interior_mutability/cell1.rs" },
   { name = "cell1_sol", path = "../solutions/40_interior_mutability/cell1.rs" },
+  { name = "cell2", path = "../exercises/40_interior_mutability/cell2.rs" },
+  { name = "cell2_sol", path = "../solutions/40_interior_mutability/cell2.rs" },
   { name = "dispatch1", path = "../exercises/32_dispatch/dispatch1.rs" },
   { name = "dispatch1_sol", path = "../solutions/32_dispatch/dispatch1.rs" },
   { name = "dispatch2", path = "../exercises/32_dispatch/dispatch2.rs" },

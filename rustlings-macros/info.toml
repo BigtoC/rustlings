@@ -2034,6 +2034,36 @@ fn take_last(&self) -> String {
 
 Why rustc lists the E0599s first: all type checking runs before borrow checking, and a function body that fails type checking is not borrow-checked at all."""
 
+[[exercises]]
+name = "cell2"
+dir = "40_interior_mutability"
+hint = """
+Part A — `word_count`: `word_count_is_computed_once` fails with `left: 3, right: 1` because every call runs `count_words` again. Let the cell decide: `get_or_init` runs its closure only while the cell is empty, stores the result and returns a `&usize` either way.
+```
+fn word_count(&self) -> usize {
+    *self.word_count.get_or_init(|| self.count_words())
+}
+```
+The `*` copies the cached `usize` out. A hand-rolled `Cell<Option<usize>>` also works for a `Copy` value. A `Cell<usize>` where `0` means "not computed yet" does not: an empty text really has 0 words (`a_cached_zero_is_still_cached`).
+
+Part B — `summary`: the starter builds first and asks second, so it builds a summary on every call and then `set` throws it away because the cell is already full (compute-then-set). Ask first:
+```
+fn summary(&self) -> &str {
+    self.summary.get_or_init(|| self.build_summary())
+}
+```
+`get_or_init` returns a `&String` borrowed for as long as `&self`, which coerces to `&str`. It is a plain reference with no guard, because nothing reachable through `&self` can replace a value once it is set. (Checking `self.summary.get()` first and calling `set` only when it is `None` also works; `get_or_init` does both in one call.) Try the same with a `RefCell<Option<String>>` and you get E0515 "cannot return value referencing temporary value": the `&str` would borrow the `Ref` guard, which dies when the method returns. Using ANOTHER cell inside the closure is fine (`build_summary` calls `word_count`). Calling `self.summary()` inside its own closure is not: every nested call finds the cell still empty and runs the closure again, so it recurses until the stack overflows. `Box::leak` or `String::leak` would also give you a `&str`, but they leak memory, and the test that checks that the `&str` points into `self.summary` rejects them.
+
+Part C — `set_text`: with `&mut self` you need no interior mutability, and the borrow checker already guarantees that no `&str` from `summary()` is still alive. Empty both caches and compute nothing:
+```
+fn set_text(&mut self, text: String) {
+    self.text = text;
+    self.word_count.take();
+    self.summary.take();
+}
+```
+(`self.word_count = OnceCell::new();` works too.) Recomputing eagerly here fails `set_text_computes_nothing_by_itself`: staying lazy is the point of the cache. Why not `LazyCell`? Its initializer is fixed when the struct is built, so it cannot borrow the struct's own `text`."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
