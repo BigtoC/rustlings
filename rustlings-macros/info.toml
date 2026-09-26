@@ -4581,6 +4581,44 @@ What does not work:
 
 The price of the bound: an `async fn` impl on a type that holds an `Rc` or a `RefCell` no longer compiles, because its future always holds `&self`, and `&Self` is `Send` only if `Self: Sync`. A `where Self: Sync` clause on the method is a valid variant. The `trait-variant` crate generates a local and a `Send` flavor when you need both."""
 
+[[exercises]]
+name = "async_send4"
+dir = "56_async_bounds"
+hint = """
+E0038 "the trait `DynStore` is not dyn compatible ... because method `get` is `async`": a vtable needs one return type for `get`, but every `async fn` impl returns its own anonymous future. Erase the future's type with a boxed trait object (in essence what `#[async_trait]` generates; `futures::future::BoxFuture` is this alias), and make the trait object thread-safe with supertraits:
+```
+type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+trait DynStore: Send + Sync {
+    fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Option<String>>;
+}
+```
+Then move each old body into `Box::pin(async move { .. })`, which captures `self` and `key` and runs only when polled:
+```
+impl DynStore for MemStore {
+    fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            io().await;
+            self.lookups.fetch_add(1, Ordering::Relaxed);
+            self.data.get(key).cloned()
+        })
+    }
+}
+```
+Do the same for `Fallback`, around its `match`.
+
+Each piece matters:
+- Without `+ Send`, the spawned tasks fail with "future cannot be sent between threads safely" and E0277 "`dyn std::future::Future<Output = Option<String>>` cannot be sent between threads safely".
+- Without the supertraits, `Arc<dyn DynStore>` is not `Send`: E0277 "`dyn DynStore` cannot be sent between threads safely" and "cannot be shared between threads safely" (a trait object has only the auto traits written into it, see `35_error_design/err5`).
+- Without the `'a`, the box means `+ 'static` and cannot borrow `self` (`25_lifetimes_deep/lifetimes8`).
+- With the elided `fn get(&self, key: &str) -> BoxFuture<'_, ..>`, the future may borrow only `self`, so using `key` inside it gives "lifetime may not live long enough". Copying `key` into a `String` first works too.
+
+Wrong turns:
+- Doing the lookup in `get` itself and boxing only the result (`Box::pin(std::future::ready(..))`) compiles, but it is eager, so `get_does_its_work_only_when_polled` fails.
+- Asking the backup even on a hit fails `fallback_asks_the_backup_only_on_a_miss`.
+
+The cost is one allocation per call plus dynamic dispatch on every poll. Keep the static `-> impl Future + Send` trait from `async_send3` for generic code, and add a boxed twin (a second trait with a blanket impl, or the wrapper struct the `dynosaur` crate generates) when you need `dyn`."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
