@@ -5577,3 +5577,37 @@ Three other correct ceilings:
 - Do the `(x + d - 1)` addition in 256 bits yourself.
 
 `widening_mul` (no carry argument) is still unstable, and `carrying_mul` cannot be called in a `const fn` yet. For overflow behavior in debug and release builds, see `31_debugging/debugging2`."""
+
+[[exercises]]
+name = "checkedmath2"
+dir = "66_checked_math"
+hint = """
+`minting_one_share_pays_the_full_price` fails with `left: Ok(1)`, `right: Ok(2)`. With A = 3 and S = 2 a share is worth 1.5 assets. Flooring charges only 1, and the share price falls to 4/3. `withdrawing_one_asset_burns_a_share` gets `Ok(0)`: 2/3 of a share floors to nothing, so the asset is free. `no_trade_lowers_the_share_price` reports the first trade that leaves `A' * S < A * S'`.
+
+Round against the user: what the user RECEIVES rounds down, and what the user PAYS rounds up.
+```
+fn preview_deposit(&self, assets: u128) -> Result<u128, VaultError> {
+    self.convert_to_shares(assets, Rounding::Down) // the user receives shares
+}
+
+fn preview_mint(&self, shares: u128) -> Result<u128, VaultError> {
+    self.convert_to_assets(shares, Rounding::Up) // the user pays assets
+}
+
+fn preview_withdraw(&self, assets: u128) -> Result<u128, VaultError> {
+    self.convert_to_shares(assets, Rounding::Up) // the user pays (burns) shares
+}
+
+fn preview_redeem(&self, shares: u128) -> Result<u128, VaultError> {
+    self.convert_to_assets(shares, Rounding::Down) // the user receives assets
+}
+```
+Why it works, for a deposit of x assets that mints s = floor(x * S / A) shares: A' * S = A * S + x * S >= A * S + A * s = A * S'. The other three trades work the same way.
+
+Wrong fixes the tests catch:
+- Rounding everything up breaks deposits: 1 asset at A = 3, S = 2 would buy a whole share.
+- Adding 1 by hand overcharges exact trades (A = 4, S = 2).
+
+Ethereum's ERC-4626 states the same rule in its Security Considerations, and requires its plain price quotes `convertToShares` / `convertToAssets` to round down.
+
+The rule protects the vault, not the next depositor. `a_deposit_worth_less_than_one_share_is_refused` shows the first-depositor (inflation) attack: one share plus a direct donation makes a 1_000-asset deposit round down to 0 shares. That is why `deposit` refuses a zero-share result. Production vaults also add virtual shares and assets (OpenZeppelin's `_decimalsOffset`) or seed the vault. The `mul_div` here is part 1's solution."""

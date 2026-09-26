@@ -456,6 +456,8 @@ bin = [
   { name = "window4_sol", path = "../solutions/63_slices_strings/window4.rs" },
   { name = "checkedmath1", path = "../exercises/66_checked_math/checkedmath1.rs" },
   { name = "checkedmath1_sol", path = "../solutions/66_checked_math/checkedmath1.rs" },
+  { name = "checkedmath2", path = "../exercises/66_checked_math/checkedmath2.rs" },
+  { name = "checkedmath2_sol", path = "../solutions/66_checked_math/checkedmath2.rs" },
 ]
 
 [package]
