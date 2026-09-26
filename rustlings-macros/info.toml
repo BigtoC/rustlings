@@ -4364,6 +4364,46 @@ Check the value BEFORE `sender_alive`: `send` consumes the sender, so by the tim
 - checking the value and storing the waker under separate `lock()` calls: a send or drop that lands in between finds no waker and wakes nobody (a lost wakeup), or the receiver then sees `sender_alive == false` and reports `Canceled` for a value that was sent. `many_cross_thread_handoffs_never_lose_a_wakeup` times its deliveries to land inside `poll`, so it catches this.
 Lock-free versions (tokio's oneshot, `futures::task::AtomicWaker`) invert the order: they register the waker first and then check the value again, so a send that races the registration is still seen. timer1 applies the same rules to a timer entry."""
 
+[[exercises]]
+name = "timer1"
+dir = "58_leaf_futures"
+hint = """
+This compiles, but `a_sleeping_task_lets_other_tasks_run` fails with `left: ["a:start", "a:done", "b:ran"]`. `thread::sleep` inside `poll` blocks the only executor thread, so `b` cannot run until `a`'s sleep is over, and overlapping sleeps end in spawn order. A leaf never waits itself: it hands its waker to someone who will wake it later and returns `Pending`. Here that someone is the given timer thread (the signature needs `mut self` and `cx`):
+```
+fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+    if let Some(entry) = &self.entry {
+        let mut entry = entry.lock().unwrap();
+        if entry.fired {
+            return Poll::Ready(());
+        }
+        match &mut entry.waker {
+            Some(stored) => stored.clone_from(cx.waker()),
+            slot => *slot = Some(cx.waker().clone()),
+        }
+        return Poll::Pending;
+    }
+    if Instant::now() >= self.deadline {
+        return Poll::Ready(());
+    }
+    let entry = Arc::new(Mutex::new(TimerEntry {
+        fired: false,
+        waker: Some(cx.waker().clone()),
+    }));
+    self.timer.register(self.deadline, Arc::clone(&entry));
+    self.entry = Some(entry);
+    Poll::Pending
+}
+```
+The first poll registers once and returns `Pending`, which gives the thread straight back. The timer thread sets `fired` and wakes the stored waker, and the next poll sees `fired`. An early re-poll replaces the waker under the same lock that guards `fired`, so the timer cannot fire between the check and the update. Checking `Instant::now() >= self.deadline` on every poll instead of `fired` also works, because the timer wakes only after the deadline. These do NOT fix it:
+- returning `Pending` once (with `wake_by_ref`) and blocking on the next poll: `shorter_sleeps_finish_first` still sees spawn order;
+- `wake_by_ref` plus `Pending` until the deadline: busy-polling, caught by the poll count and the executor's poll budget;
+- registering on every poll: an early re-poll adds a second entry (`registrations()` is 2);
+- keeping only the first poll's waker, or waking the old one when you replace it: waker A is woken instead of B;
+- registering an entry without a waker: the timer fires and wakes nobody, and the executor panics because the timer has no entry left to wake the task;
+- always registering, even for `Duration::ZERO`: a passed deadline must be `Ready` on the first poll;
+- one thread per sleep (`thread::spawn` plus `thread::sleep`): it works, but costs a thread per timer, and the tests require the shared timer. That is the async book's `TimerFuture`.
+Real runtimes keep all deadlines in one structure (tokio uses a hierarchical timing wheel) and remove the entry when a `Sleep` is dropped. For blocking work you cannot avoid, use `tokio::task::spawn_blocking`. oneshot1 has the same waker rules, and yield1 shows the CPU-bound version of this starvation."""
+
 # MODULE 4 · SEND / SYNC — the basis of fearless concurrency
 
 [[exercises]]
