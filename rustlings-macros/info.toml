@@ -4021,6 +4021,75 @@ No borrow from the `get_mut` survives the `return None`, so the code after the `
 
 What the tests catch: a new tick inserted without removing the old one (stale ticks, so `order` outgrows `map` and a hot key is evicted), evicting before checking for an update, `pop_last` (it evicts the MOST recently used key), and dropping the old tick with `order.retain(..)` or finding it with a `find` over `order` (O(n): `hits_updates_and_evictions_are_hash_lookups_not_scans` counts key comparisons). Finding the oldest entry by scanning `map` for the smallest tick still passes the tests, but it is O(n) and throws away the reason `order` exists. Part 2 makes every operation O(1)."""
 
+[[exercises]]
+name = "lru2"
+dir = "60_lru_cache"
+hint = """
+First E0308 twice: `get` and `put` have empty bodies. Once they compile, the tests fail until `unlink` and `push_front` do their job, because everything goes through them.
+
+The helpers. Copy entry `i`'s two links out before you write to its neighbors. They are `Copy` indices, so no borrow of `nodes` stays alive. (Holding `let node = &mut self.nodes[i];` across a write such as `self.nodes[p].next = ..` and using `node` afterward is E0499 "cannot borrow `self.nodes` as mutable more than once at a time": the checker treats every `self.nodes[_]` as the same place.)
+```
+fn unlink(&mut self, i: usize) {
+    let (prev, next) = (self.nodes[i].prev, self.nodes[i].next);
+    match prev {
+        Some(p) => self.nodes[p].next = next,
+        None => self.head = next,
+    }
+    match next {
+        Some(n) => self.nodes[n].prev = prev,
+        None => self.tail = prev,
+    }
+    self.nodes[i].prev = None;
+    self.nodes[i].next = None;
+}
+
+fn push_front(&mut self, i: usize) {
+    self.nodes[i].prev = None;
+    self.nodes[i].next = self.head;
+    match self.head {
+        Some(h) => self.nodes[h].prev = Some(i),
+        None => self.tail = Some(i),
+    }
+    self.head = Some(i);
+}
+```
+`get` is a lookup that yields a `usize` (which borrows nothing), then unlink, push to the front and index:
+```
+fn get(&mut self, key: &K) -> Option<&V> {
+    let &i = self.map.get(key)?;
+    self.unlink(i);
+    self.push_front(i);
+    Some(&self.nodes[i].value)
+}
+```
+`put`: an update changes the value in place and relinks. A new key takes the next slot, or in a full cache the tail's slot. `mem::replace` swaps the new entry in and returns the old one by value (reading `self.nodes[t]` by value is E0507 "cannot move out of index of `Vec<Entry<K, V>>`", the rule of `24_ownership_model/ownership4`):
+```
+fn put(&mut self, key: K, value: V) -> Option<(K, V)> {
+    if let Some(&i) = self.map.get(&key) {
+        self.nodes[i].value = value;
+        self.unlink(i);
+        self.push_front(i);
+        return None;
+    }
+    let entry = Entry { key: key.clone(), value, prev: None, next: None };
+    if self.nodes.len() < self.capacity {
+        let i = self.nodes.len();
+        self.nodes.push(entry);
+        self.map.insert(key, i);
+        self.push_front(i);
+        return None;
+    }
+    let t = self.tail.expect("a full cache has a tail");
+    self.unlink(t);
+    let old = std::mem::replace(&mut self.nodes[t], entry);
+    self.map.remove(&old.key);
+    self.map.insert(key, t);
+    self.push_front(t);
+    Some((old.key, old.value))
+}
+```
+This is why an entry stores its key: without it, an eviction could not find the map entry to remove. Wrong turns the tests catch: pushing a new entry on every eviction (`nodes` grows past 3), `Vec::remove` or `swap_remove` on the tail (other entries move, and the new key does not land in the evicted slot), evicting `head` instead of `tail`, forgetting the old head's `prev` in `push_front` or the `tail` update in `unlink` (the forward and backward walks disagree), leaving the evicted key in `map` (it would then find the new key's value), and finding a key by scanning `nodes` instead of asking `map` (`hits_updates_and_evictions_are_hash_lookups_not_scans` counts key comparisons). Compare `59_arena/arena2`: here no free list or generations are needed, because a slot is only freed to be reused at once and no index leaves the cache."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]

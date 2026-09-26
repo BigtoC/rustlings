@@ -352,6 +352,8 @@ bin = [
   { name = "arena2_sol", path = "../solutions/59_arena/arena2.rs" },
   { name = "lru1", path = "../exercises/60_lru_cache/lru1.rs" },
   { name = "lru1_sol", path = "../solutions/60_lru_cache/lru1.rs" },
+  { name = "lru2", path = "../exercises/60_lru_cache/lru2.rs" },
+  { name = "lru2_sol", path = "../solutions/60_lru_cache/lru2.rs" },
   { name = "futures1", path = "../exercises/28_futures/futures1.rs" },
   { name = "futures1_sol", path = "../solutions/28_futures/futures1.rs" },
   { name = "futures2", path = "../exercises/28_futures/futures2.rs" },
