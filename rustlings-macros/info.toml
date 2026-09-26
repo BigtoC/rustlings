@@ -4521,6 +4521,34 @@ Wrong turns:
 
 Clippy's `await_holding_lock` lint flags both starter functions, including the one with the explicit `drop`. A current-thread runtime does not help: `tokio::spawn` still demands `Send`. Only `block_on` or `spawn_local` would accept this future, and there it could deadlock the thread. If a lock really must stay held across an `.await`, use an async mutex such as `tokio::sync::Mutex`. For short bookkeeping like this, the std `Mutex` is the right tool."""
 
+[[exercises]]
+name = "async_send2"
+dir = "56_async_bounds"
+hint = """
+Two errors, one cause: a spawned task may outlive `greet_all`, so its future must be `'static` and may not borrow anything.
+- E0521 "borrowed data escapes outside of function ... argument requires that `'1` must outlive `'static`" is the borrow of the caller's `names`: each `name` is a `&String` into it.
+- E0373 "async block may outlive the current function, but it borrows `prefix`" is the borrow of the local `prefix`.
+
+rustc suggests `move`, but `async move` moves the `&String` (still a borrow, so E0521 stays) and moves `prefix` into the first task only (E0382 "use of moved value ... value moved here, in previous iteration of loop"). Give every task owned data, and share the prefix through an `Arc`:
+```
+let prefix: Arc<str> = format!("{}, ", greeting.trim()).into();
+let mut handles = Vec::new();
+for name in names {
+    let name = name.clone();
+    let prefix = Arc::clone(&prefix);
+    handles.push(spawn(async move { render(&prefix, &name).await }));
+}
+```
+Also add `use std::sync::Arc;`. Cloning the `String` prefix for every task instead of using an `Arc` also works (one small allocation per task). The other idiomatic answer copies the names once into an `Arc<[String]>` (`let names: Arc<[String]> = names.into();`) and moves an `Arc::clone` plus the index into each task.
+
+Wrong turns:
+- `names: &'static [String]` makes the tests' local `Vec`s fail with E0597.
+- `Box::leak` or `String::leak` compile, but they leak memory on every call (`25_lifetimes_deep/lifetimes9` is where leaking is deliberate).
+- Calling `block_on` in a loop, or using `thread::scope`, avoids `spawn` and fails `spawns_one_task_per_name`.
+- Copying the whole slice into every task works but costs O(n^2).
+
+In real async code, if the tasks only need to run concurrently and not in parallel, skip spawning and `join` borrowing futures inside the current task (`57_async_combinators/join1`). There is no safe scoped async spawn, because a scope future could be `mem::forget`-ed while its tasks still run."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
