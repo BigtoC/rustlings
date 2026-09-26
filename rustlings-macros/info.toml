@@ -5545,3 +5545,35 @@ first_true(heaviest, total, fits)
 `hi = total + 1` also works. Starting the search at 0 or 1 is wrong: a check that
 never looks at single packages then says a ship smaller than the heaviest package
 fits. Summing in `u32` overflows on three `u32::MAX` packages."""
+
+# MODULE 5 · Checked Math: Overflow-Safe `mul_div`, Rounding Direction, Fixed Point and Determinism
+
+[[exercises]]
+name = "checkedmath1"
+dir = "66_checked_math"
+hint = """
+`the_motivating_example_fits` fails with `left: None`, `right: Some(750000000000000000000000000)`. `5e26 * 1.5e18` is about 7.5e44, far above `u128::MAX` (about 3.4e38), so `checked_mul` returns `None` even though the quotient fits. A zero divisor panics with "attempt to divide by zero", and the textbook ceiling `(x + d - 1) / d` panics with "attempt to add with overflow" near `u128::MAX`.
+
+Two 128-bit factors never need more than 256 bits. `carrying_mul` (stable since 1.91) returns the full product as `(low, high)`, and the given `div_wide` divides it:
+```
+fn mul_div_floor(a: u128, b: u128, d: u128) -> Option<u128> {
+    let (lo, hi) = a.carrying_mul(b, 0);
+    div_wide(hi, lo, d).map(|(quot, _)| quot)
+}
+
+fn mul_div_ceil(a: u128, b: u128, d: u128) -> Option<u128> {
+    let (lo, hi) = a.carrying_mul(b, 0);
+    let (quot, rem) = div_wide(hi, lo, d)?;
+    if rem == 0 { Some(quot) } else { quot.checked_add(1) }
+}
+```
+Watch the order: `carrying_mul` returns the LOW half first, and `div_wide` takes the high half first. `div_wide` already returns `None` for `d == 0` and for a quotient that needs more than 128 bits (exactly when `hi >= d`). `checked_add(1)` turns a rounded-up `u128::MAX` into `None` instead of a panic. Nothing is added before the division, so nothing can overflow there.
+
+Shortcuts the tests reject: dividing first (`a / d * b`) throws the remainder away. The split `a / d * b + a % d * b / d` is exact only while `a % d * b` fits. `f64` has only 53 bits of mantissa, `saturating_mul` gives wrong answers, and "floor + 1" over-rounds exact quotients. `div_ceil` (which Clippy's `manual_div_ceil` suggests) fixes the `+ d - 1` overflow but not the product.
+
+Three other correct ceilings:
+- Test the remainder with `quot.wrapping_mul(d) != a.wrapping_mul(b)`. Both sides are exact modulo 2^128, and the true remainder is below `d`, so they agree only when it is 0.
+- Fold the `+ d - 1` into the product: `a.carrying_mul(b, d - 1)` computes `a * b + (d - 1)` exactly, and that sum always fits in 256 bits. Check `d == 0` first, or `d - 1` underflows.
+- Do the `(x + d - 1)` addition in 256 bits yourself.
+
+`widening_mul` (no carry argument) is still unstable, and `carrying_mul` cannot be called in a `const fn` yet. For overflow behavior in debug and release builds, see `31_debugging/debugging2`."""
