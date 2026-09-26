@@ -2873,6 +2873,47 @@ impl StrExt for str {
 ```
 Method calls auto-deref `String`, `&String`, `Box<str>` and `Rc<str>` down to `str`, then auto-ref to `&str`, so this one impl serves every string type. Separate impls for `String` and `&str` miss `Box<str>` and `Rc<str>`, and `StrExt::is_blank("")` needs `str: StrExt`. `impl<T: AsRef<str> + ?Sized> StrExt for T` is a valid alternative, but without the `?Sized` it does not cover `str` itself. Code in other modules must import the trait (`use crate::StrExt;`). Otherwise it gets E0599 with the help "trait `StrExt` which provides `is_blank` is implemented but not in scope"."""
 
+# TRAITS & ABSTRACTION · Associated Types: Outputs, Inputs, Operators and GATs
+
+[[exercises]]
+name = "assoc1"
+dir = "43_assoc_types"
+hint = """
+Every E0107, E0220 and E0576 comes from one mismatch. The trait takes `N` and `E` as type PARAMETERS, but the code that uses it treats the node and edge types as something the graph type determines (`G::Node`, `Graph<Edge = u32>`). Parameters are inputs: there is one impl per choice of `N` and `E`, so every use has to name them. Associated types are outputs: there is one impl per type, and that impl fixes them. Make them associated types, and put the `PartialEq` bound on `Node` itself so that every `G: Graph` gets it:
+```
+trait Graph {
+    type Node: PartialEq;
+    type Edge;
+
+    fn neighbors(&self, node: &Self::Node) -> Vec<(Self::Node, Self::Edge)>;
+
+    fn edge(&self, from: &Self::Node, to: &Self::Node) -> Option<Self::Edge> {
+        // body unchanged
+    }
+}
+```
+Then each impl names its own types:
+```
+impl Graph for AdjList {
+    type Node = u32;
+    type Edge = u32;
+
+    fn neighbors(&self, node: &Self::Node) -> Vec<(Self::Node, Self::Edge)> {
+        // body unchanged
+    }
+}
+
+impl Graph for Grid {
+    type Node = (usize, usize);
+    type Edge = u32;
+
+    fn neighbors(&self, &(row, col): &Self::Node) -> Vec<(Self::Node, Self::Edge)> {
+        // body unchanged
+    }
+}
+```
+Inside an impl, `Self::Node` and `u32` are the same type, so the methods may keep their concrete signatures. `trait Graph where Self::Node: PartialEq { type Node; .. }` also works, because that where clause is implied just like the bound on the associated type. A bound on `edge` alone (`where Self::Node: PartialEq`) is not enough: `path_cost` and the tests' `leads_to` compare nodes without a bound of their own. With a PARAMETER bound (`trait Graph<N: PartialEq, E>`), every `G: Graph<N, E>` would have to restate `N: PartialEq` (E0277 "can't compare `N` with `N`"). Following rustc's "add missing generic arguments" help would put `N` and `E` back into every signature, which is exactly what `Iterator` avoids by having `type Item`."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
