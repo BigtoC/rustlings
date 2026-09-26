@@ -3448,6 +3448,43 @@ fn trimmed(text: &(impl AsRef<str> + ?Sized)) -> &str {
 ```
 The explicit form `fn trimmed<T: AsRef<str> + ?Sized>(text: &T) -> &str` is the same function (and it can be turbofished). Taking `text: impl AsRef<str>` by value fails with E0106, because the returned slice would borrow a parameter that is dropped when the call ends. `text: &str` rejects the `&Label` (it has no `Deref`), and `text: &dyn AsRef<str>` cannot take a `&str`: turning a `str` into a `dyn` needs `str: Sized` (E0277). Copying the result (`to_string` plus `Box::leak`) fails the pointer checks. The README table lists every place the implicit bound applies; `Self` in a trait is the one exception."""
 
+[[exercises]]
+name = "sized2"
+dir = "45_sized_deref"
+hint = """
+E0277 "the trait bound `Box<dyn Shape>: Shape` is not satisfied": `boxed.area()` works by auto-deref, but a trait bound is checked against the exact type, and nothing implements `Shape` for a `Box` or a `&`. Write one forwarding impl per pointer type, with `?Sized` so that trait objects are covered too:
+```
+impl<S: Shape + ?Sized> Shape for Box<S> {
+    fn area(&self) -> f64 {
+        (**self).area()
+    }
+
+    fn name(&self) -> &'static str {
+        (**self).name()
+    }
+}
+
+impl<S: Shape + ?Sized> Shape for &S {
+    fn area(&self) -> f64 {
+        (**self).area()
+    }
+
+    fn name(&self) -> &'static str {
+        (**self).name()
+    }
+}
+```
+`self` is a `&Box<S>` (or a `&&S`), and two derefs reach the `S`. `S::area(self)` works too, because function arguments deref-coerce. The traps: `self.area()` finds the forwarding impl itself and recurses. rustc only warns ("function cannot return without recursing"), and the tests overflow the stack. Leaving out `name` compiles, but then the wrapper runs the default body and the tests see "shape" instead of "circle". Without `?Sized`, `Box<dyn Shape>` fails with E0277 "the size for values of type `dyn Shape` cannot be known at compilation time", and `&dyn Shape` is still not a `Shape`. Adding concrete impls for `Box<dyn Shape>` and `&dyn Shape` next to the sized ones still misses `Box<dyn Shape + Send>` and `&(dyn Shape + Sync)`: every combination of auto traits is a trait object type of its own (think `Box<dyn Error + Send + Sync>`), and only a `?Sized` parameter covers them all. The generic impls nest by themselves: `&Box<dyn Shape>` uses the `&S` impl with `S = Box<dyn Shape>`.
+Part B: E0277 "the trait bound `&MockMailer: Mailer` is not satisfied", then E0599 on `register`, because `SignupService<M: Mailer>` needs `M: Mailer` and here `M = &MockMailer`. A forwarding impl for shared references fixes both, and `?Sized` covers `&dyn Mailer`:
+```
+impl<T: Mailer + ?Sized> Mailer for &T {
+    fn send(&self, to: &str, subject: &str) {
+        (**self).send(to, subject);
+    }
+}
+```
+`&T` is enough because `send` takes `&self`. A trait with `&mut self` methods is forwarded through `&mut T` instead, as std does for `Iterator`, `io::Read` and `io::Write`. A blanket `impl<P: Deref> Shape for P where P::Target: Shape` also passes the tests, but it is `deref2`'s Deref-as-inheritance again, and it claims every `Deref` type: a local type that derefs to a shape could never have its own `Shape` impl (E0119). std writes one impl per pointer type."""
+
 # TRAITS & ABSTRACTION · Builders and Typestate: From Run-Time Checks to Compile-Time Guarantees
 
 [[exercises]]
