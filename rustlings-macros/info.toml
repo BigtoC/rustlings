@@ -4043,6 +4043,47 @@ does this downcast for you. `catch_unwind` catches only unwinding panics; the
 README lists the cases that abort (`panic = "abort"`, a panic escaping a
 `Drop` during unwinding, a panic leaving an `extern "C" fn`)."""
 
+[[exercises]]
+name = "panic2"
+dir = "49_panics"
+hint = """
+The worker died while holding the guard, so the mutex is poisoned and every
+`lock()` returns `Err(PoisonError)`; `unwrap` turns that into one more panic
+per access. A `PoisonError` still owns the guard (the lock IS held). Take the
+guard back with `into_inner`, rebuild the cached total from the entries (the
+record), and clear the flag, all while you hold that guard:
+```
+fn lock_ledger(ledger: &Mutex<Ledger>) -> MutexGuard<'_, Ledger> {
+    ledger.lock().unwrap_or_else(|poisoned| {
+        let mut guard = poisoned.into_inner();
+        guard.total = guard.entries.iter().sum();
+        ledger.clear_poison();
+        guard
+    })
+}
+```
+`clear_poison` (Rust 1.77) only resets the flag, so calling it while you hold
+the guard is fine: nobody else can see the ledger before the guard is dropped.
+A `match ledger.lock() { Ok(guard) => guard, Err(poisoned) => { .. } }` is the
+same thing. These fail: `unwrap_or_else(PoisonError::into_inner)` alone (the
+total stays 30 instead of 35, and the mutex stays poisoned); repairing without
+`clear_poison` (`is_poisoned()` stays true, and the next worker's own
+`lock().unwrap()` panics before it records anything); `clear_poison` without
+the repair (the invariant stays broken); `Ledger::default()` or popping the
+last entry (entries are lost: you cannot know which step the crashed thread
+had reached, so rebuild what is derived instead of guessing what to undo); a
+new `Ledger` built from cloned entries (`the_repair_happens_in_place` checks
+the buffer); repairing on every lock (`a_healthy_lock_is_trusted_as_it_is`: a
+lock that is not poisoned must stay O(1)); and fixing only `read_total` (a
+`post` or `entries` call right after the crash still panics). One mistake the
+tests cannot catch: dropping the error, clearing the poison and calling
+`lock()` again to repair. Between the unlock and the new lock, another thread
+can take the cleared mutex and read the wrong total as if it were sound.
+Recover like this only when you can restore or check the invariant;
+otherwise keep `lock().unwrap()` and let the panic spread. `parking_lot`'s
+locks never poison. The README covers `RwLock` (only a panicking writer
+poisons it), `Once`, `OnceLock` and `LazyLock`."""
+
 # TRAITS & ABSTRACTION · Testing Seams: Trait-Injected Dependencies, Recording Mocks and Fake Clocks
 
 [[exercises]]
