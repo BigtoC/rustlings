@@ -2756,6 +2756,47 @@ design rule behind all of this: libraries expose matchable (often `#[non_exhaust
 error enums, so callers can branch on the cause; applications use an opaque report
 like this one, add context, and downcast when they must."""
 
+# TRAITS & ABSTRACTION · Coherence: Orphan Rule, Blanket Impls, Extension Traits
+
+[[exercises]]
+name = "coherence1"
+dir = "42_coherence"
+hint = """
+Part A: E0117 "only traits defined in the current crate can be implemented for types defined outside of the crate". The orphan rule wants a LOCAL type (or a local trait) in the impl. `Vec<Point>` is a `Vec`, and `Vec` belongs to std: the element type doesn't make it local, and neither does a `type` alias. Wrap the `Vec` in a local newtype, move the `Display` impl onto it, and give it `FromIterator` so that `collect()` works:
+```
+#[repr(transparent)]
+struct Polyline(Vec<Point>);
+
+impl fmt::Display for Polyline {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, point) in self.0.iter().enumerate() {
+            if i > 0 {
+                f.write_str(" -> ")?;
+            }
+            write!(f, "{point}")?;
+        }
+        Ok(())
+    }
+}
+
+impl FromIterator<Point> for Polyline {
+    fn from_iter<I: IntoIterator<Item = Point>>(iter: I) -> Self {
+        Polyline(iter.into_iter().collect())
+    }
+}
+```
+`#[repr(transparent)]` is optional. It turns "same size as the `Vec`" into a documented layout guarantee. Joining strings also passes (`let parts: Vec<String> = self.0.iter().map(|p| p.to_string()).collect(); f.write_str(&parts.join(" -> "))`), at the cost of a `String` per point. The other way out that rustc mentions, a local trait, doesn't work here, because the tests use `{}` and std's `to_string`, and both only see `Display`.
+
+Part B: E0277 "the trait bound `(i32, i32): From<Point>` is not satisfied". An `Into` impl gives you `.into()` and nothing else. core's blanket `impl<T, U: From<T>> Into<U> for T` only works in the other direction. And `From<Point> for (i32, i32)` IS allowed: in `impl From<T1> for T0` the orphan rule looks at `T0` AND `T1`, and `T1 = Point` is local, with no type parameters anywhere. Replace the `Into` impl with:
+```
+impl From<Point> for (i32, i32) {
+    fn from(point: Point) -> Self {
+        (point.x, point.y)
+    }
+}
+```
+Delete the old `Into` impl. If you keep it, you get E0119 "conflicting implementations of trait `Into<(i32, i32)>` for type `Point`" with "conflicting implementation in crate `core`": your `From` already gives you that `Into`. Clippy's `from_over_into` lint suggests exactly this rewrite (its help even says "`impl From<Local> for Foreign` is allowed by the orphan rules"). The Rust 1.41 relaxation (RFC 2451) was about GENERIC impls such as `impl<T> From<Wrapper<T>> for Vec<T>`. A concrete impl like this one has always been legal."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]

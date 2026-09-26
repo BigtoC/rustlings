@@ -298,6 +298,8 @@ bin = [
   { name = "err5_sol", path = "../solutions/35_error_design/err5.rs" },
   { name = "err6", path = "../exercises/35_error_design/err6.rs" },
   { name = "err6_sol", path = "../solutions/35_error_design/err6.rs" },
+  { name = "coherence1", path = "../exercises/42_coherence/coherence1.rs" },
+  { name = "coherence1_sol", path = "../solutions/42_coherence/coherence1.rs" },
   { name = "linkedlist1", path = "../exercises/27_data_structures/linkedlist1.rs" },
   { name = "linkedlist1_sol", path = "../solutions/27_data_structures/linkedlist1.rs" },
   { name = "ringbuffer1", path = "../exercises/27_data_structures/ringbuffer1.rs" },
