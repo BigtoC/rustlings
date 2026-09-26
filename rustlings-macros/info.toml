@@ -4336,6 +4336,34 @@ loop {
 ```
 When the timeout wins, `Select` drops only the reference, and the future lives on in the outer loop's body and resumes next round. This is the `tokio::pin!(fut); loop { select! { v = &mut fut => .. } }` pattern. What the tests reject: removing the `select` or raising the patience (heartbeats are counted exactly); polling the timeout before the line (the tie in `a_line_that_completes_on_the_timeouts_last_poll_wins` becomes a heartbeat, and with patience 0 the line is never polled at all); pinning one future for the whole stream (it is polled again after it completed); clearing `pending` at the start of `read_line`, or not emptying it after a line; collecting `char`s instead of bytes (a heartbeat falls between the two bytes of 'é'); and a `static` or thread-local buffer (two readers polled in turns would mix their partial lines). tokio's `AsyncBufReadExt::read_line` has exactly this problem, while `Lines::next_line` and tokio-util's `FramedRead` keep the buffer in the reader (fix 1) and are cancel safe. The planned `backend-tokio-lab` (`select_cancel`) in `deep-dive/ROADMAP.md` repeats this with tokio's `select!` and `read_exact`."""
 
+# MODULE 3 · Leaf Futures: External Wakeups, Timers and Cooperative Yielding
+
+[[exercises]]
+name = "oneshot1"
+dir = "58_leaf_futures"
+hint = """
+This compiles, but `send_wakes_the_latest_waker_and_only_that_one` fails with `left: 0`, `right: 1`: after `send`, waker B was woken 0 times. With no value yet, `poll` returns `Pending` without leaving `cx.waker()` anywhere, so `send` finds no waker and wakes nobody. The `block_on` tests panic with "the receiver is still Pending, but the sender thread has finished". `poll` also never reads `sender_alive`, so a dropped sender leaves the receiver `Pending` forever instead of finishing with `Err(Canceled)`. Do all of it under the guard you already hold (rename `_cx` to `cx`):
+```
+let mut shared = self.shared.lock().unwrap();
+if let Some(value) = shared.value.take() {
+    return Poll::Ready(Ok(value));
+}
+if !shared.sender_alive {
+    return Poll::Ready(Err(Canceled));
+}
+match &mut shared.waker {
+    Some(stored) => stored.clone_from(cx.waker()),
+    slot => *slot = Some(cx.waker().clone()),
+}
+Poll::Pending
+```
+Check the value BEFORE `sender_alive`: `send` consumes the sender, so by the time you poll it has always been dropped, and checking `sender_alive` first turns every sent value into `Canceled`. `Waker::clone_from` skips the clone when `will_wake` says the stored waker already wakes the same task. A plain `shared.waker = Some(cx.waker().clone());` is also correct, just one clone more per poll. These do NOT fix it:
+- storing the waker only when none is stored yet (`if shared.waker.is_none()`): the send wakes the stale waker A, not B;
+- `cx.waker().wake_by_ref()` before `Pending`: that is busy-polling, and the tests check that nothing is woken before there is a value;
+- waking the old waker when you replace it: waker A must not be woken at all;
+- checking the value and storing the waker under separate `lock()` calls: a send or drop that lands in between finds no waker and wakes nobody (a lost wakeup), or the receiver then sees `sender_alive == false` and reports `Canceled` for a value that was sent. `many_cross_thread_handoffs_never_lose_a_wakeup` times its deliveries to land inside `poll`, so it catches this.
+Lock-free versions (tokio's oneshot, `futures::task::AtomicWaker`) invert the order: they register the waker first and then check the value again, so a send that races the registration is still seen. timer1 applies the same rules to a timer entry."""
+
 # MODULE 4 · SEND / SYNC — the basis of fearless concurrency
 
 [[exercises]]
