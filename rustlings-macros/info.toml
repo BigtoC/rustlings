@@ -5005,6 +5005,38 @@ if !current.is_empty() {
 
 The bounded links matter here: a stage blocked in `send` on a full link is woken with the error the moment its receiver goes away. `drop_the_sender_first_then_join_the_stage` is the thread-pool form of rule 1: drop the job queue's Sender, then join the workers, as the Book's `ThreadPool` does in its `Drop` impl. See also `20_threads/threads3`, where each producer gets its own `tx.clone()`."""
 
+[[exercises]]
+name = "channel3"
+dir = "54_channels"
+hint = """
+The tests fail to compile: E0559 "variant `Cmd::Get` has no field named `reply`" where they build a `Cmd::Get`, and E0026 "variant `Cmd::Get` does not have a field named `reply`" where they match on one. A command on a channel travels one way. To get an answer back, the request must carry its own reply channel.
+
+1. Add the field. rustc then reports E0027 "pattern does not mention field `reply`" in `run_actor` and E0063 "missing field `reply` in initializer of `Cmd`" in `Handle::get`, the two places left to fix:
+```
+enum Cmd {
+    Put { key: String, value: u32 },
+    Get { key: String, reply: Sender<Option<u32>> },
+}
+```
+2. The actor answers on the request's own channel. It must not `unwrap()` that send, or stop on its error. A caller that gave up has dropped its Receiver, and one impatient caller must not take the actor down for everybody:
+```
+Cmd::Get { key, reply } => {
+    let _ = reply.send(map.get(&key).copied());
+}
+```
+3. `get` creates a fresh channel for every request, sends the Sender half along with the command, and waits on the Receiver half. `recv` fails only when the reply Sender is dropped unanswered, which means the actor is gone:
+```
+fn get(&self, key: &str) -> Result<Option<u32>, Gone> {
+    let (reply, answer) = mpsc::channel();
+    let cmd = Cmd::Get { key: key.to_owned(), reply };
+    self.tx.send(cmd).map_err(|_| Gone)?;
+    answer.recv().map_err(|_| Gone)
+}
+```
+`reply` is dropped at the end of the actor's match arm, so each reply channel carries exactly one answer. Each answer travels on the channel that came with its request, so it cannot reach the wrong caller, even when the actor answers out of order. One reply channel shared by every caller would mix the answers up, and a `Receiver` stored in `Handle` would make it neither `Clone` nor `Sync` (the tests also build `Handle { tx }` directly). `answer.recv().unwrap()` panics when the actor dies, and `unwrap_or(None)` reports a dead actor as a missing key: `get_reports_gone_when_the_actor_dies_mid_request` catches both.
+
+This is the tokio actor pattern: an `mpsc` mailbox plus a `tokio::sync::oneshot` channel for each reply (std's `std::sync::oneshot` is still unstable). The actor ends by itself once the last `Handle` is dropped, because its `for cmd in commands` loop sees the disconnect, as in `channel2`. A `get` followed by a `put` from one client is not atomic: anything that must be atomic, such as an increment, has to be a single command."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
