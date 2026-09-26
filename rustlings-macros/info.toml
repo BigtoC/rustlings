@@ -1849,6 +1849,51 @@ from the rustlings directory. A method call on a temporary is not extended:
 scrutinees follow other rules again; they keep a guard alive through the arms
 or the body, which `31_debugging/debugging6..8` turns into real bugs."""
 
+[[exercises]]
+name = "raii1"
+dir = "39_drop_raii"
+hint = """
+E0507 "cannot move out of `self.f` which is behind a mutable reference":
+calling an `FnOnce` consumes it, and `drop` only has `&mut self`. Give `drop`
+something it can take: store the closure in an `Option` and `take()` it,
+which leaves `None` behind (`mem::take` would need `F: Default`, and closures
+are not `Default`):
+```
+struct Defer<F: FnOnce()> {
+    f: Option<F>,
+}
+
+impl<F: FnOnce()> Defer<F> {
+    fn new(f: F) -> Self {
+        Defer { f: Some(f) }
+    }
+
+    fn cancel(mut self) {
+        self.f = None; // drops the closure now; `drop` then finds nothing
+    }
+}
+
+impl<F: FnOnce()> Drop for Defer<F> {
+    fn drop(&mut self) {
+        if let Some(f) = self.f.take() {
+            f();
+        }
+    }
+}
+```
+Keep the `#[must_use]` attribute on the struct. `cancel` cannot stop `drop`
+from running when it returns; it can only disarm it. `mut self` changes only
+the local binding, not what callers see (`24_ownership_model/ownership6`).
+These fail: `F: FnMut()` or `F: Fn()` (E0507 again, now inside the test
+closures that move a captured value out, which makes them `FnOnce` only),
+`F: Clone` or `F: Copy` plus calling a copy (E0277: those closures capture a
+`Receipt`, an `Rc` or a `&mut`), `mem::forget(self)` in `cancel` (it leaks the
+closure, a test counts its `Rc`, and clippy denies it), and
+`cancel(&mut self)` (the tests call it on a non-`mut` binding, E0596). A
+non-generic `Option<Box<dyn FnOnce() + 'a>>` would pass the tests too, but
+the TODO rules it out: it costs an allocation and a lifetime parameter. The
+`scopeguard` crate is the production version of this guard."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
