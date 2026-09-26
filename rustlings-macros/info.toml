@@ -2999,6 +2999,40 @@ while let Some(window) = windows.next() {
 ```
 Each window dies at the end of the loop body, and that is what lets the next `next` call borrow the iterator again. Workarounds that stay with std's `Iterator` produce the wrong windows (and the tests' `count` helper needs a `LendingIterator` anyway). `mem::take` plus `split_at_mut` gives `&'s mut` chunks that do not overlap: 1 window of 3 over 5 elements instead of 3. Copying each window into a `Vec` means the writes never reach the slice. For `Copy` elements, std can do overlapping mutable windows without a GAT, via `Cell::from_mut(slice).as_slice_of_cells().windows(2)`, but the tests need `&mut [T]` windows. Tinker: delete `where Self: 'a` from the trait to see "missing required bound on `Item`". Or write a `for_each` helper bounded by `F: for<'a> FnMut(L::Item<'a>)` and watch a call on a borrowed local demand `'static` (E0597, "due to a current limitation of the type system")."""
 
+# TRAITS & ABSTRACTION · Trait Contracts: `Eq`, `Hash`, `Ord` and Floats
+
+[[exercises]]
+name = "contracts1"
+dir = "44_trait_contracts"
+hint = """
+The derived `Hash` feeds the name's bytes exactly as stored, but the hand-written `PartialEq` ignores ASCII case. So `Header::new("Content-Type") == Header::new("content-type")` holds while their hashes differ. That breaks the rule from the `Hash` docs: `k1 == k2` implies `hash(k1) == hash(k2)`. A lookup with another casing then searches the wrong place and usually misses. With `RandomState` it can also hit by luck, so the bug comes and goes. rustc cannot check the rule. Clippy's deny-by-default `derived_hash_with_manual_eq` flags exactly this pattern. Breaking the rule is a logic error, not UB.
+
+Remove `Hash` from the derive list (keep `Debug` and `Eq`) and import `Hasher`. Then hash exactly what `==` compares, normalized the same way, followed by the terminator `str` uses:
+```
+use std::hash::{Hash, Hasher};
+
+#[derive(Debug, Eq)]
+struct Header(String);
+
+impl Hash for Header {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for byte in self.0.bytes() {
+            state.write_u8(byte.to_ascii_lowercase());
+        }
+        state.write_u8(0xff);
+    }
+}
+```
+Equal names make identical calls with identical bytes, so they hash equally with ANY `Hasher`, and nothing is allocated. The `0xff` byte never occurs in UTF-8, so it marks where the name ends. Without it, `(Header::new("ab"), Header::new("c"))` and `(Header::new("a"), Header::new("bc"))` feed the same bytes, and `"a"` feeds a prefix of `"accept"`. A length prefix is prefix-free too and passes: put `state.write_usize(self.0.len());` before the bytes. A `0` terminator is not prefix-free, because a name may contain a NUL character.
+
+Other options:
+- `self.0.to_ascii_lowercase().hash(state)` is correct, but it allocates a `String` on every hash, that is, on every lookup.
+- Folding with `byte | 0x20` or with Unicode `to_lowercase()` folds more than `==` does. `x-^` and `x-~` are different headers, and so are `Ü-id` and `ü-id`, but those folds feed them the same bytes. The tests reject both.
+- A constant or length-only hash is consistent, but it turns the map into a list. The tests reject it.
+- Lowercasing in `new` and deriving everything is consistent as well, but it loses the original spelling, which the tests check.
+
+Note that `HashMap::insert` keeps the FIRST key when an equal key is inserted again. That is why `spelling` still returns `Content-Type`. For the related `Borrow` contract, and why a case-insensitive key must not implement `Borrow<str>`, see `45_sized_deref/borrow1`."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
