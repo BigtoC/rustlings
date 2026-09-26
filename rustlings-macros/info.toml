@@ -7352,3 +7352,38 @@ player.rating.clamp(MIN_RATING, MAX_RATING)
 `clamp` panics if `min > max`, which is why clippy only suggests it when both bounds are constants in the right order. `max(MIN_RATING).min(MAX_RATING)` is the same pattern, and clippy flags it too.
 
 Adding `#[allow(clippy::...)]` would make clippy quiet, but in a review it answers nothing."""
+
+# MODULE 5 · Mock Interviews: Timed, Statement-First Problems With Part-2 Follow-Ups
+
+[[exercises]]
+name = "set_trie"
+dir = "68_mock_interviews"
+hint = """
+This hint is the interviewer's rubric, then a sketch of a reference answer. Grade yourself against the rubric before you read the sketch.
+
+RUBRIC
+- Clarifying questions, before any code: is a word any UTF-8 or only lowercase ASCII? Is "" a word? What does `starts_with("")` mean on an empty trie? Which order for the suggestions, and what if `limit` is 0 or huge?
+- Design: one node per prefix with an `is_word` flag, and a stated choice of children map with its cost. `[Option<Box<Node>>; 26]` gives O(1) steps but 26 pointers per node, and it only knows 'a'..='z': it panics on "über", "Zoe" and "new york" (`words_are_any_utf8_not_only_lowercase_ascii`, the follow-up that fails most first attempts). `BTreeMap<char, Node>` takes any char, costs O(log k) per step and iterates in order. `HashMap<char, Node>` is O(1) expected per step, but then `suggest` must sort each node's children. A sorted `Vec<(char, Node)>` with binary search is compact and ordered. A byte-keyed trie (256 children, walking `as_bytes()`) is also correct, because every `&str` prefix ends on a char boundary; it rebuilds the words with `String::from_utf8`.
+- Complexity, stated unprompted: `insert`, `contains` and `starts_with` take O(L) steps for L chars, whatever the number of words; `suggest` takes O(L + the length of the words it returns) if the walk stops at the limit; memory is one node per distinct prefix, at most the total number of chars.
+- Edge cases (the tests below the banner): a prefix past the end of a word; a word that is its own prefix; `limit` 0; `limit` `usize::MAX` (`Vec::with_capacity(limit)` panics with "capacity overflow"); `starts_with("")` is false on an empty trie, because the root is the only node that can have no word below it; "" as a word, which sorts first.
+- Rust: `node = node.children.entry(c).or_default();` walks and creates in one step with a `&mut` cursor; `node = node.children.get(&c)?;` walks a lookup; `!mem::replace(&mut node.is_word, true)` answers "was it new?"; one reused `String` buffer carries the path during the walk (push, recurse, pop).
+- Follow-up questions to expect: why does `suggest` return `Vec<String>`, not `Vec<&str>`? (A trie stores no word as one contiguous string. Storing the whole word at its terminal node would allow `&str`, at the cost of memory.) How do you delete a word? (Clear the flag, then prune the nodes left with no word below, or `starts_with` starts lying.) How would you rank suggestions by popularity? (A count per word, and a top-k heap, or a cached best-k list per node.) Why is a `BTreeSet<String>` with `range(prefix..)` a fine answer to "autocomplete" but not to "implement a trie"? (O(L log n) per query, and no shared prefixes.) What happens with 100_000-char keys? (A recursive walk and the compiler's drop glue both recurse once per char, and dropping such a trie overflows a test thread's stack. Walk with an explicit stack and write an iterative `Drop`, as in `27_data_structures/linkedlist1`.)
+- The tests cannot see how the answer is built: a `suggest` that collects the whole subtree and then truncates it passes them, and so does a "trie" that is really a `BTreeSet<String>` (O(L log n) per query) or a scanned `Vec<String>` (O(n)). The interviewer fails all three.
+
+REFERENCE SKETCH
+```
+#[derive(Default)]
+struct Node {
+    children: BTreeMap<char, Node>,
+    is_word: bool,
+}
+
+fn insert(&mut self, word: &str) -> bool {
+    let mut node = &mut self.root;
+    for c in word.chars() {
+        node = node.children.entry(c).or_default();
+    }
+    !std::mem::replace(&mut node.is_word, true)
+}
+```
+A `find(prefix) -> Option<&Node>` walks with `node = node.children.get(&c)?;`. Then `contains` is `find(word).is_some_and(|n| n.is_word)`, and `starts_with` is `find(prefix).is_some_and(|n| n.is_word || !n.children.is_empty())`. `suggest` walks down to the prefix's node, then depth first in key order (a node's own word before its children's words), pushes a clone of the path buffer for every word, and returns as soon as it holds `limit` words."""
