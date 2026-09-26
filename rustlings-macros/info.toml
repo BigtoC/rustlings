@@ -3973,6 +3973,54 @@ fn remove(&mut self, id: Id) -> Option<T> {
 ```
 `self.get(id)?;` returns early for every id that `get` rejects, before anything changes. A `remove` that pushes the index onto `free` without that check frees a slot twice, and the given `insert` then panics with "is on the free list but occupied". `checked_add` is `None` only at `u32::MAX`: that slot is retired (vacant, never on `free` again). Plain `generation + 1` panics with "attempt to add with overflow" in `a_slot_out_of_generations_is_retired`. `wrapping_add` would hand slot 0 out again with generation 0 (reviving its oldest ids), and `saturating_add` would revive the removed id itself. Not bumping the generation at all lets the stale id reach the next value. `Vec::remove` and `swap_remove` shift or move other values and break their ids. A let chain works as well: `if let Some(slot) = self.slots.get_mut(id.index) && let Slot::Occupied { generation, .. } = *slot && generation == id.generation { .. } else { None }`. Related: `36_atomics/atomics5` fixes the same ABA problem with a version tag."""
 
+# MODULE 2 · LRU Cache: From a Tick Map to an O(1) Index-Linked List
+
+[[exercises]]
+name = "lru1"
+dir = "60_lru_cache"
+hint = """
+Both bodies are empty, so each one is E0308 "mismatched types": the signature promises an `Option`, but a body with no tail expression evaluates to `()`.
+
+`get`: one `get_mut` finds the value AND the key's last tick. Swap in a new tick with `mem::replace`, then move the key from the old tick to the new one in `order`. `BTreeMap::remove` hands back the key it stored, so nothing is cloned:
+```
+fn get(&mut self, key: &K) -> Option<&V> {
+    let tick = self.tick();
+    let (value, last_use) = self.map.get_mut(key)?;
+    let old_tick = std::mem::replace(last_use, tick);
+    let stored_key = self.order.remove(&old_tick).expect("every key has a tick");
+    self.order.insert(tick, stored_key);
+    Some(value)
+}
+```
+Take the tick FIRST. Calling `self.tick()` while `value` is alive is E0499 "cannot borrow `*self` as mutable more than once at a time": a `&mut self` method borrows the whole struct, `map` included (`37_borrowck_errors/borrowck1`). The field accesses `self.map` and `self.order` are disjoint, so those two borrows may overlap. `Some(value)` coerces the `&mut V` to the `&V` in the signature.
+
+`put`: handle an update BEFORE looking at the capacity, so that an update never evicts. For a new key in a full cache, `pop_first` removes the smallest tick together with its key, and removing that key from `map` hands the value back by move:
+```
+fn put(&mut self, key: K, value: V) -> Option<(K, V)> {
+    let tick = self.tick();
+    if let Some((stored, last_use)) = self.map.get_mut(&key) {
+        *stored = value;
+        let old_tick = std::mem::replace(last_use, tick);
+        let stored_key = self.order.remove(&old_tick).expect("every key has a tick");
+        self.order.insert(tick, stored_key);
+        return None;
+    }
+    let evicted = if self.map.len() == self.capacity {
+        let (_, lru_key) = self.order.pop_first().expect("a full cache is not empty");
+        let (lru_value, _) = self.map.remove(&lru_key).expect("the maps agree");
+        Some((lru_key, lru_value))
+    } else {
+        None
+    };
+    self.order.insert(tick, key.clone());
+    self.map.insert(key, (value, tick));
+    evicted
+}
+```
+No borrow from the `get_mut` survives the `return None`, so the code after the `if let` may use `map` again (compare `37_borrowck_errors/borrowck3`, where the borrow IS returned). The update branch repeats `get`'s bookkeeping; a private `touch` helper could hold it.
+
+What the tests catch: a new tick inserted without removing the old one (stale ticks, so `order` outgrows `map` and a hot key is evicted), evicting before checking for an update, `pop_last` (it evicts the MOST recently used key), and dropping the old tick with `order.retain(..)` or finding it with a `find` over `order` (O(n): `hits_updates_and_evictions_are_hash_lookups_not_scans` counts key comparisons). Finding the oldest entry by scanning `map` for the smallest tick still passes the tests, but it is O(n) and throws away the reason `order` exists. Part 2 makes every operation O(1)."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
