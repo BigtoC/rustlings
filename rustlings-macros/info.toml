@@ -4818,6 +4818,39 @@ fn contains(&self, key: i32) -> bool {
 ```
 `if key < node.key { .. } else if key > node.key { .. } else { .. }` works just as well as `cmp`. What fails: a recursive helper (the 200_000-deep test aborts the whole run with "thread ... has overflowed its stack"), a `contains` that scans the whole tree instead of one path (the test with a key hidden off the search path), sending equal keys to the right (the duplicate tests), comparing with `key - node.key` (it overflows once `i32::MIN` is the root, and debug builds panic), and forgetting `self.len += 1`. The follow-up interviewers ask: both operations are O(h), and h is n for a sorted insertion order (see the degenerate-tree test), which is why balanced trees and std's `BTreeMap` exist."""
 
+[[exercises]]
+name = "bst2"
+dir = "61_trees"
+hint = """
+Both bodies are empty: E0308 "mismatched types" (expected `InOrder<'_>` for `iter`, and `Option<&i32>` for `next`).
+
+Keep the pending LEFT CHAIN on the stack. The smallest key of any subtree is at the end of its chain of left children, and the key right after a node's key is the smallest key of that node's right subtree. So `iter` pushes the root and its left chain, and `next` pops the top node and pushes the left chain of its right child before returning the key:
+```
+impl<'a> InOrder<'a> {
+    fn push_left_chain(&mut self, mut node: Option<&'a Node>) {
+        while let Some(n) = node {
+            self.stack.push(n);
+            node = n.left.as_deref();
+        }
+    }
+}
+
+fn iter(&self) -> InOrder<'_> {
+    let mut iter = InOrder { stack: Vec::new() };
+    iter.push_left_chain(self.root.as_deref());
+    iter
+}
+
+fn next(&mut self) -> Option<Self::Item> {
+    let node = self.stack.pop()?;
+    self.push_left_chain(node.right.as_deref());
+    Some(&node.key)
+}
+```
+The helper's parameter must be `Option<&'a Node>`: with a bare `Option<&Node>` rustc says E0621 "explicit lifetime required in the type of `node`", because the nodes go into a `Vec<&'a Node>`. `node` is a `&'a Node` (a copy of the reference that was on the stack), so `&node.key` is a `&'a i32` that borrows the tree, not `self`. Every node is pushed and popped once: O(n) for the whole walk, O(1) amortized per `next`, and at most one node per level on the stack. `as_deref` turns `&'a Option<Box<Node>>` into `Option<&'a Node>`.
+
+What fails: collecting every node up front (the stack-length test on the 1023-node tree), a recursive `push_left_chain` (the 200_000-deep chain of left children aborts with "has overflowed its stack"), a pre-order walk (the order tests), and `Box::leak(Box::new(node.key))` (the address tests). Once `next` returns `None` it keeps returning `None`, because the stack stays empty; `impl FusedIterator for InOrder<'_> {}` would state that promise in the type. Follow-up questions: the memory cost (O(h) versus O(n) for a collected `Vec`), and why `tree.insert(..)` inside `for k in &tree` is E0502."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]

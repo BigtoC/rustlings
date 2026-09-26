@@ -384,6 +384,8 @@ bin = [
   { name = "lru3_sol", path = "../solutions/60_lru_cache/lru3.rs" },
   { name = "bst1", path = "../exercises/61_trees/bst1.rs" },
   { name = "bst1_sol", path = "../solutions/61_trees/bst1.rs" },
+  { name = "bst2", path = "../exercises/61_trees/bst2.rs" },
+  { name = "bst2_sol", path = "../solutions/61_trees/bst2.rs" },
   { name = "futures1", path = "../exercises/28_futures/futures1.rs" },
   { name = "futures1_sol", path = "../solutions/28_futures/futures1.rs" },
   { name = "futures2", path = "../exercises/28_futures/futures2.rs" },
