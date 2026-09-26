@@ -3262,6 +3262,109 @@ fn normalize(s: &str) -> Cow<'_, str> {
 ```
 Write `Cow<'_, str>`, not `Cow<str>`. The short form compiles, but it triggers the `mismatched_lifetime_syntaxes` warning (Rust 1.89+). The tests reject: `Cow::Owned` for clean input (it allocates); `String::leak` or `Box::leak` for changed input (a leak, and not `Owned`); a single-space check (`s.contains(' ')` makes almost every input `Owned`); `.into_owned()` or `.to_string()` in `normalize` (it copies a borrowed result); and `split(' ')` plus `join` (it drops the spaces at the ends). One mistake they cannot see: building the collapsed `String` first and returning `Borrowed(s)` when it equals the input. That still allocates on every call, so decide before you allocate. A lazier single pass is fine too: `s.find("  ")` gives the first double space at `i`; copy `s[..=i]` and keep collapsing from `i + 1`."""
 
+# TRAITS & ABSTRACTION · Builders and Typestate: From Run-Time Checks to Compile-Time Guarantees
+
+[[exercises]]
+name = "builder1"
+dir = "47_type_level"
+hint = """
+rustlings runs `cargo build` before the tests, so at first you see only the E0308 for the empty `build()` body. The other errors come from the tests and show up when they compile. There are four kinds of compile error, then one clippy error.
+
+E0599 "no associated function or constant named `default` found for struct
+`ServerConfig`": nothing implements `Default` yet. These values are not the
+fields' own defaults (a derive would give an empty host, port 0 and 0 workers),
+so write the impl by hand:
+```
+impl Default for ServerConfig {
+    fn default() -> Self {
+        ServerConfig {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            workers: 4,
+            timeout: Duration::from_secs(30),
+            tags: Vec::new(),
+        }
+    }
+}
+```
+
+E0308 "expected `String`, found `&str`" (also `&String` and `Cow<'_, str>`) at
+every `.host(...)`: take `impl Into<String>` and convert inside. An owned
+`String` goes through the identity `From<T> for T`, so it is moved, which is
+what the pointer test checks. A `&str`, a `&String` or a `Cow::Borrowed` is
+copied exactly once.
+```
+pub fn host(mut self, host: impl Into<String>) -> Self {
+    self.host = Some(host.into());
+    self
+}
+```
+`impl AsRef<str>` (or `impl ToString`) plus a copy compiles too, but it copies
+an owned `String` as well, so `an_owned_host_is_moved_in_not_copied` fails.
+
+E0599 "no method named `tags` found": write a generic setter over
+`IntoIterator` whose items convert into `String`. `extend` appends, so a second
+call adds to the list instead of replacing it:
+```
+pub fn tags<I>(mut self, tags: I) -> Self
+where
+    I: IntoIterator,
+    I::Item: Into<String>,
+{
+    self.tags.extend(tags.into_iter().map(Into::into));
+    self
+}
+```
+`I: IntoIterator<Item = String>` rejects the arrays of `&str`, the
+`&Vec<String>` and the `Option` (E0271 "type mismatch resolving
+`<[&str; 2] as IntoIterator>::Item == String`"). A `Vec<String>` parameter
+rejects everything except a `Vec<String>`.
+
+E0308 for the empty `build` (expected `Result<ServerConfig, BuildError>`, found
+`()`): check the host first, then the workers, and take every unset setting
+from `ServerConfig::default()`, so the defaults live in one place:
+```
+pub fn build(self) -> Result<ServerConfig, BuildError> {
+    let host = self
+        .host
+        .filter(|host| !host.trim().is_empty())
+        .ok_or(BuildError::MissingHost)?;
+    let defaults = ServerConfig::default();
+    let workers = self.workers.unwrap_or(defaults.workers);
+    if workers == 0 {
+        return Err(BuildError::ZeroWorkers);
+    }
+    Ok(ServerConfig {
+        host,
+        port: self.port.unwrap_or(defaults.port),
+        workers,
+        timeout: self.timeout.unwrap_or(defaults.timeout),
+        tags: self.tags,
+    })
+}
+```
+Falling back to `Default`'s loopback host fails the missing-host test (required
+means required), and an `expect` turns bad input into a panic.
+
+Finally, clippy reports "missing `#[must_use]` attribute on a method returning
+`Self`", from the `#[deny(clippy::return_self_not_must_use)]` on the `impl`. Put
+the attribute on the builder TYPE, optionally with a message that shows up in
+the `unused_must_use` warning:
+```
+#[must_use = "a builder does nothing until you call `build()`"]
+#[derive(Debug, Default)]
+pub struct ServerConfigBuilder {
+    // ...
+}
+```
+`#[must_use]` on every setter also satisfies the lint, but the type-level
+attribute covers every method, including ones added later. The lint only checks
+exported methods, which is why the exercise's items are `pub`.
+
+A `NonZeroUsize` for `workers` would move the zero check into the type itself,
+the direction `typestate1` takes for the URL. The module README compares
+consuming and `&mut self` builders and explains `#[non_exhaustive]`."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
