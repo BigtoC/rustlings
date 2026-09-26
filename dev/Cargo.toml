@@ -400,6 +400,8 @@ bin = [
   { name = "async_send4_sol", path = "../solutions/56_async_bounds/async_send4.rs" },
   { name = "scope1", path = "../exercises/51_scoped_threads/scope1.rs" },
   { name = "scope1_sol", path = "../solutions/51_scoped_threads/scope1.rs" },
+  { name = "scope2", path = "../exercises/51_scoped_threads/scope2.rs" },
+  { name = "scope2_sol", path = "../solutions/51_scoped_threads/scope2.rs" },
   { name = "atomics1", path = "../exercises/36_atomics/atomics1.rs" },
   { name = "atomics1_sol", path = "../solutions/36_atomics/atomics1.rs" },
   { name = "atomics2", path = "../exercises/36_atomics/atomics2.rs" },

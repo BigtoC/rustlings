@@ -4652,6 +4652,35 @@ Don't satisfy `'static` with `data.to_vec()`, an `Arc<Vec<u64>>` or `Box::leak`.
 
 `join()` returns a worker's panic as an `Err`, and `unwrap()` turns it into a panic in the caller. If a scoped thread panics and you never join it, `scope` itself panics with "a scoped thread panicked" once every thread has finished. The module README explains why the older guard-based `thread::scoped` was unsound. See also `25_lifetimes_deep/lifetimes7` (`T: 'static` for owned values) and `33_closures/closure1` (E0373 and `move`)."""
 
+[[exercises]]
+name = "scope2"
+dir = "51_scoped_threads"
+hint = """
+E0499 "cannot borrow `*data` as mutable more than once at a time". Each closure writes through `data`, so it captures `*data` by mutable borrow, and a closure handed to `s.spawn` keeps that borrow until the scope ends. The checker never compares `..mid` with `mid..`.
+
+Split the slice first, so that each thread owns a disjoint `&mut [u64]`:
+```
+let size = data.len().div_ceil(n.max(1)).max(1);
+thread::scope(|s| {
+    for chunk in data.chunks_mut(size) {
+        s.spawn(move || {
+            on_chunk(chunk);
+            for x in chunk.iter_mut() {
+                *x *= factor;
+            }
+        });
+    }
+});
+```
+- `n.max(1)` turns 0 threads into 1, because `len.div_ceil(0)` panics with "attempt to divide by zero".
+- The outer `.max(1)` keeps the chunk size above 0 for an empty slice, because `chunks_mut(0)` panics with "chunk size must be non-zero".
+- `div_ceil` rounds up, so at most `n` chunks cover everything. `len / n` gives too many chunks (10 elements on 3 threads make 4), and it gives a size of 0 when `n > len`.
+- `move` gives each closure its own `chunk`, plus copies of `factor` and `on_chunk`. If you loop over indices instead, a closure that borrows the loop variable `i` without `move` is E0373.
+
+Joining each handle inside the loop, or putting a `Mutex` around the slice, makes the threads take turns, and `all_chunks_are_scaled_at_the_same_time` fails after 20 s. A balanced split built from repeated `split_at_mut` calls, with sizes that differ by at most one, passes too. In real code, `n` usually comes from `thread::available_parallelism()`.
+
+The overflow in `a_panic_in_a_worker_reaches_the_caller` panics inside a worker, and `thread::scope` then panics after all threads are joined ("a scoped thread panicked"). Don't switch to `wrapping_mul` or `saturating_mul`, and don't join the handles and throw the `Err` away: either one makes that test fail. For E0499 and `split_at_mut` in single-threaded code, see `37_borrowck_errors/borrowck1`."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
