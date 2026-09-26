@@ -1787,6 +1787,40 @@ data.len()
 Because several `Rc` handles point at the same cell, a change made through one
 handle is visible through another."""
 
+# MODULE 1 · Drop and RAII: Drop Order, Guards and Leaks
+
+[[exercises]]
+name = "drop1"
+dir = "39_drop_raii"
+hint = """
+Each `quiz_*` test compares the real log with your constant, so it fails until
+the prediction is exact. Every answer follows from two rules. A value is
+dropped exactly once, when its CURRENT owner goes away. When several owners go
+away at the same point, bindings go in REVERSE order of declaration, while the
+parts of one value (struct fields, tuple, array and `Vec` elements) go
+FORWARD, after the value's own `Drop::drop`:
+```
+const S_LOCALS: &[&str] = &["end of body", "last", "list[0]", "list[1]", "first"];
+const S_LET_UNDERSCORE: &[&str] = &["temporary", "end of body", "named", "guard"];
+const S_FIELDS: &[&str] = &["end of body", "request", "header", "body"];
+const S_PARAMS: &[&str] = &["end of body", "local", "second", "first", "returned"];
+const S_MOVES: &[&str] = &["a", "old", "end of body", "b", "new"];
+```
+`locals`: the three locals go last-declared first, and the `Vec` drops its
+items front to back. `let_underscore`: `_` binds nothing, so
+`let _ = Noisy(..);` leaves a temporary that dies at the `;` (that is why
+rustc's deny-by-default `let_underscore_lock` lint rejects
+`let _ = m.lock().unwrap();`). `let _ = named;` does not move `named` at all,
+so it lives to the end of the scope; `_guard` is an ordinary binding.
+`fields`: `Request::drop` runs first, with every field intact, then the
+fields in DECLARATION order; the order of the struct literal only decides
+creation. `params`: the parameters own the arguments and are dropped when
+`handle` returns, after its locals, in reverse order (a bare `_` parameter
+too). `moves`: `drop(a)` is an empty function that takes `a` by value, the
+assignment drops "old" on the spot, and "b" now belongs to `_moved`, declared
+after `_slot`, so it goes before "new". The README has a cheat sheet, and the
+Reference's "Destructors" chapter has the full rules."""
+
 # DEEP DIVE · TRAITS & ABSTRACTION — dispatch, closures, iterators, error design
 # (Prerequisites the async and concurrency modules assume; std + 100% safe.)
 
