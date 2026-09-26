@@ -6223,6 +6223,72 @@ After the A-B-A the index matches but the tag has moved on, so the stale `pop_co
 - re-checking `next[idx]` inside `pop_commit`, which is another check-then-act race.
 The limit is that a 32-bit tag repeats after 2^32 updates. With heap nodes on `AtomicPtr`, ABA comes together with use-after-free, so real lock-free stacks use hazard pointers or epoch-based reclamation (`crossbeam-epoch`) rather than tags alone. atomics4 covers the plain CAS retry loop that `push` and `pop` are built on."""
 
+# QUIZ 5 · Send and Sync of std Types
+
+[[exercises]]
+name = "quiz5"
+dir = "quizzes"
+hint = """
+Each answer applies one row of this table (`T: ?Sized` omitted):
+```
+type                  Send if            Sync if
+Cell<T>, RefCell<T>   T: Send            never
+Mutex<T>              T: Send            T: Send
+RwLock<T>             T: Send            T: Send + Sync
+Rc<T>                 never              never
+Arc<T>                T: Send + Sync     T: Send + Sync
+&T                    T: Sync            T: Sync
+&mut T                T: Send            T: Sync
+MutexGuard<'_, T>     never              T: Sync
+mpsc::Sender<T>       T: Send            T: Send (since Rust 1.72)
+mpsc::Receiver<T>     T: Send            never
+*const T, *mut T      never              never
+Box<T>                T: Send            T: Sync
+```
+So:
+```
+const CELL: Answer = Answer::SendOnly;
+const MUTEX_OF_CELL: Answer = Answer::SendAndSync;
+const RWLOCK_OF_CELL: Answer = Answer::SendOnly;
+const MUTEX_OF_RC: Answer = Answer::Neither;
+const ARC_OF_CELL: Answer = Answer::Neither;
+const ARC_OF_MUTEX_OF_REFCELL: Answer = Answer::SendAndSync;
+const SHARED_REF_TO_CELL: Answer = Answer::Neither;
+const MUT_REF_TO_CELL: Answer = Answer::SendOnly;
+const GUARD_OF_U32: Answer = Answer::SyncOnly;
+const GUARD_OF_CELL: Answer = Answer::Neither;
+const SENDER: Answer = Answer::SendAndSync;
+const RECEIVER: Answer = Answer::SendOnly;
+const CONST_PTR: Answer = Answer::Neither;
+const BOXED_SEND_CLOSURE: Answer = Answer::SendOnly;
+```
+The reasons. A `Mutex` hands its content to one thread at a time (as `&mut T`),
+which is no different from moving it there, so it asks only `T: Send`, and that
+is how it makes a `Cell` shareable. `RwLock` readers hold `&T` on several
+threads at once, so sharing it also needs `T: Sync` (`53_lock_hazards`). A lock
+protects its content, not the other clones of an `Rc` inside it. Every clone of
+an `Arc` gives out `&T`, and the last drop may happen on any thread, hence
+`T: Send + Sync` for both traits. `&T` is Send exactly when `T` is Sync (that
+is the definition of Sync); `&mut T` is exclusive, like ownership, so sending
+it needs `T: Send`. A `MutexGuard` must unlock on the thread that locked it
+(POSIX threads require it), so it never moves (`56_async_bounds`), while
+sharing `&guard` only shares `&T`: the textbook "Sync but not Send" type, and
+its `Cell` version is neither. `Sender` became Sync in Rust 1.72; a `Receiver`
+never is, so several consumers share `Arc<Mutex<Receiver<T>>>` (`54_channels`).
+Raw pointers are neither as a conservative default, which a type built on them
+lifts with `unsafe impl Send` / `unsafe impl Sync` once its author has checked
+the invariants. A trait object has only the auto traits its type names
+(directly or through a supertrait), which is why errors that cross threads are
+`Box<dyn Error + Send + Sync>` (`35_error_design`).
+
+To check a type yourself, write `fn assert_send<T: Send>() {}` and call
+`assert_send::<Mutex<Cell<i32>>>();`. A false case fails to compile with E0277,
+for example "`Cell<i32>` cannot be shared between threads safely" for
+`RwLock<Cell<i32>>` as Sync. The planned `api-surface-lab` in
+`deep-dive/ROADMAP.md` turns such negative checks into `compile_fail` doctests,
+and the store-buffering questions once planned for this quiz went to the
+planned `lock-free-ordering-lab`."""
+
 # MODULE 5 · DEBUGGING — debugging & interview drills
 
 [[exercises]]

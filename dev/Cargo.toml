@@ -472,6 +472,8 @@ bin = [
   { name = "atomics4_sol", path = "../solutions/36_atomics/atomics4.rs" },
   { name = "atomics5", path = "../exercises/36_atomics/atomics5.rs" },
   { name = "atomics5_sol", path = "../solutions/36_atomics/atomics5.rs" },
+  { name = "quiz5", path = "../exercises/quizzes/quiz5.rs" },
+  { name = "quiz5_sol", path = "../solutions/quizzes/quiz5.rs" },
   { name = "debugging1", path = "../exercises/31_debugging/debugging1.rs" },
   { name = "debugging1_sol", path = "../solutions/31_debugging/debugging1.rs" },
   { name = "debugging2", path = "../exercises/31_debugging/debugging2.rs" },
