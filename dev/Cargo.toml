@@ -450,6 +450,8 @@ bin = [
   { name = "window1_sol", path = "../solutions/63_slices_strings/window1.rs" },
   { name = "window2", path = "../exercises/63_slices_strings/window2.rs" },
   { name = "window2_sol", path = "../solutions/63_slices_strings/window2.rs" },
+  { name = "window3", path = "../exercises/63_slices_strings/window3.rs" },
+  { name = "window3_sol", path = "../solutions/63_slices_strings/window3.rs" },
 ]
 
 [package]

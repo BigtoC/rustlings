@@ -5433,3 +5433,55 @@ What fails: `s.get(best).unwrap_or("")`, or rounding the offsets with
 window; comparing `end - start` (bytes) instead of a length in chars; `>=` for
 ties; returning `Box::leak(text.into_boxed_str())` fails the address check,
 because the answer must borrow the input."""
+
+[[exercises]]
+name = "window3"
+dir = "63_slices_strings"
+hint = """
+The body is empty (E0308). rustc suggests returning `intervals`, which compiles
+but merges nothing.
+
+Sort by start, then sweep once. Each interval either extends the last merged one
+or starts a new one, and the let chain says exactly that:
+```
+fn merge_intervals(mut intervals: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
+    intervals.sort_unstable_by_key(|&(start, _)| start);
+    let mut out: Vec<(i32, i32)> = Vec::with_capacity(intervals.len());
+    for (start, end) in intervals {
+        if let Some(last) = out.last_mut()
+            && start <= last.1
+        {
+            last.1 = last.1.max(end);
+        } else {
+            out.push((start, end));
+        }
+    }
+    out
+}
+```
+(`mut` in the parameter list only makes the binding mutable; the function's type
+does not change.) The `else` branch may push because `last` is not used there, so
+its borrow of `out` has already ended. Without let chains (before Rust 1.88, or in
+edition 2021) write `match out.last_mut() { Some(last) if start <= last.1 => last.1 = last.1.max(end), _ => out.push((start, end)) }`.
+
+The follow-up "can you do it without a second Vec?": `Vec::dedup_by` merges
+neighbors in place. Its closure gets the CURRENT element first and the last kept
+one second, and returning `true` drops the current one:
+```
+intervals.sort_unstable_by_key(|&(start, _)| start);
+intervals.dedup_by(|next, last| {
+    if next.0 <= last.1 {
+        last.1 = last.1.max(next.1);
+        true
+    } else {
+        false
+    }
+});
+intervals
+```
+
+What fails: `<` instead of `<=` (touching intervals stay apart); `last.1 = end`
+instead of the max (`(2, 3)` shrinks `(1, 10)`); no sort, or sorting by end
+(`(1, 10)` gets merged into `(2, 3)` as `(2, 10)`); swapping the two `dedup_by`
+arguments. `sort_by_key` and `sort_unstable()` on the whole tuples pass too;
+`sort_by_key` just allocates a buffer it does not need."""
