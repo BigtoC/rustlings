@@ -7419,3 +7419,56 @@ for (i, lc) in long.chars().enumerate() {
 }
 prev[short.len()]
 ```"""
+
+[[exercises]]
+name = "set_kv_tx"
+dir = "68_mock_interviews"
+hint = """
+This hint is the interviewer's rubric, then a sketch of a reference answer. Grade yourself against the rubric before you read the sketch.
+
+RUBRIC
+- Clarifying questions: does COMMIT close only the innermost transaction, or all of them? (Here only the innermost one, like SQL's RELEASE SAVEPOINT. The classic "Simple Database" version of this problem commits them all, so ask.) Does a transaction read its own writes? (Yes.) What does DELETE of a missing key do? What do COMMIT and ROLLBACK do with no transaction open?
+- Design, most of the grade. Two good answers:
+  1. Layered write sets: a base map plus a `Vec<HashMap<String, Option<String>>>`, one layer per open transaction, where `None` is a tombstone. BEGIN pushes an empty layer, ROLLBACK pops one, COMMIT pops one and merges it into the layer below (or applies it to the base), and GET searches from the top down. O(depth) per read, O(keys written) per commit or rollback.
+  2. An undo log: apply every write to one map at once, and record in the innermost transaction's log the value each key had before its FIRST write in that transaction (`log.entry(key).or_insert(old)`). ROLLBACK puts every logged key back to its logged value (or removes it), and COMMIT merges the log into the parent's log, keeping the parent's older entries. O(1) per read, O(keys written) per commit or rollback.
+  A full copy of the map per BEGIN is correct, but O(n) per BEGIN: exactly what the constraints rule out. `values_are_borrowed_and_moved_never_copied` catches a plain copy, because the restored values are clones living at new addresses. `begin_commit_and_rollback_never_copy_the_store` catches a copy that shares its values through `Rc<str>` (or copies the map on the first write): with 30_000 keys, each transaction takes about a thousand times as long as the same writes on a plain `HashMap`, and the test's budget allows 64 times. The pointer test also catches a `get` that leaks, and a commit that clones the entries it merges.
+- Tombstones: inside a transaction a delete must record that the key is gone without touching the layers below, and the tombstone must survive a nested commit. Dropping the `None` entries during the merge brings the old value back (`a_delete_survives_a_nested_commit`). Only the outermost commit turns tombstones into removals, so the base never holds any.
+- Complexity: every operation, stated with the depth in it.
+- Rust: `get` returns `Option<&str>` borrowed from whichever layer holds the value (`entry.as_deref()` turns an `&Option<String>` into an `Option<&str>`); `parent.extend(top)` moves the `String`s instead of cloning them; `self.layers.pop().ok_or(TxError::NoTransaction)?` is the error check. In Rust the snapshot design is visible in the code: it needs an explicit `.clone()` of the whole map.
+- Follow-up questions to expect: COUNT (`set_kv_tx_part2`); a REPL that parses lines like "SET a 10" (a `match` on the words of `split_whitespace()`, errors as values); a guard object that rolls back in `Drop` unless committed (`39_drop_raii/raii2`); sharing the store between threads (a `Mutex` around it, or a private transaction per connection, which leads to MVCC); why `delete` returns a `bool` and not the old value (a value in a lower layer cannot be moved out: a rollback may need it back).
+
+REFERENCE SKETCH
+```
+type Layer = HashMap<String, Option<String>>;
+
+struct Kv {
+    base: HashMap<String, String>,
+    layers: Vec<Layer>,
+}
+
+fn get(&self, key: &str) -> Option<&str> {
+    for layer in self.layers.iter().rev() {
+        if let Some(entry) = layer.get(key) {
+            return entry.as_deref();
+        }
+    }
+    self.base.get(key).map(String::as_str)
+}
+
+fn commit(&mut self) -> Result<(), TxError> {
+    let top = self.layers.pop().ok_or(TxError::NoTransaction)?;
+    match self.layers.last_mut() {
+        Some(parent) => parent.extend(top),
+        None => {
+            for (key, entry) in top {
+                match entry {
+                    Some(value) => self.base.insert(key, value),
+                    None => self.base.remove(&key),
+                };
+            }
+        }
+    }
+    Ok(())
+}
+```
+`set` inserts `Some(value)` into the top layer (or into the base when no transaction is open). `delete` returns `false` if `get` finds nothing, and otherwise inserts `None` into the top layer (or removes the key from the base). `begin` pushes an empty layer, and `rollback` pops one."""
