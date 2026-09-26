@@ -102,7 +102,8 @@ fn config() -> &'static str {
 These do not free anything either (static items are never dropped), but the
 slot has a name, can be set only once, and is safe to share between threads.
 `Box::leak` is for values you create at run time (any fixed number of them,
-not one per request) and pass around explicitly.
+not one per request) and pass around explicitly. `40_interior_mutability`
+(`cell3`) drills `OnceLock` and `LazyLock` as lazily initialized globals.
 
 ## Exercise Path
 

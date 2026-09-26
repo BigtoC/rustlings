@@ -59,90 +59,140 @@ cd rustlings && rustlings         # start
 > Maintainer check of the whole course: `cargo dev check` (compiles and tests every
 > exercise and solution) plus `cargo test --manifest-path deep-dive/Cargo.toml` for the
 > labs.
+>
+> `cargo dev check` starts every exercise at once. With 200+ exercises that can exceed
+> macOS's per-user process limit (`kern.maxprocperuid`), and the check stops with
+> "Resource temporarily unavailable (os error 35)". CI on Linux is not affected. Locally,
+> either raise the limit or check a subset of the modules at a time.
 
 ## Course map
 
 ### Module 1 · Ownership / Lifetimes / Memory model
 
-| Directory                | Exercises       | Focus                                                                                                                                                                                                                                 |
-| ------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `24_ownership_model`     | `ownership1..6` | Move vs Copy vs Clone; shared `&T` vs exclusive `&mut T`; the borrow checker and NLL; moving out of `&mut` with `mem::take` / `swap` / `replace` (E0507), enum state transitions, moving out of a `Drop` type (E0509)                 |
-| `25_lifetimes_deep`      | `lifetimes4..9` | Lifetime parameters, structs holding references, lifetimes in `impl`, elision; `T: 'static` vs `&'static T`, the hidden `+ 'static` in `Box<dyn Trait>`, leaking on purpose with `Box::leak`                                          |
-| `37_borrowck_errors`     | `borrowck1..4`  | Interview drill, read the error then fix the design: two `&mut` into one slice & split borrows (E0499); temporaries & returned locals (E0716 / E0515); NLL problem case #3 (E0499); no `&mut` downgrade & reborrowing (E0502 / E0382) |
-| `26_smart_pointers_deep` | `smartptr1..3`  | `Box<T>` heap allocation & recursive types; `Rc`/`Weak` shared ownership & breaking cycles; `RefCell` interior mutability                                                                                                             |
+| Directory                | Exercises              | Focus                                                                                                                                                                                                                                 |
+| ------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `24_ownership_model`     | `ownership1..6`        | Move vs Copy vs Clone; shared `&T` vs exclusive `&mut T`; the borrow checker and NLL; moving out of `&mut` with `mem::take` / `swap` / `replace` (E0507), enum state transitions, moving out of a `Drop` type (E0509)                 |
+| `25_lifetimes_deep`      | `lifetimes4..9`        | Lifetime parameters, structs holding references, lifetimes in `impl`, elision; `T: 'static` vs `&'static T`, the hidden `+ 'static` in `Box<dyn Trait>`, leaking on purpose with `Box::leak`                                          |
+| `37_borrowck_errors`     | `borrowck1..4`         | Interview drill, read the error then fix the design: two `&mut` into one slice & split borrows (E0499); temporaries & returned locals (E0716 / E0515); NLL problem case #3 (E0499); no `&mut` downgrade & reborrowing (E0502 / E0382) |
+| `26_smart_pointers_deep` | `smartptr1..3`         | `Box<T>` heap allocation & recursive types; `Rc`/`Weak` shared ownership & breaking cycles; `RefCell` interior mutability                                                                                                             |
+| `39_drop_raii`           | `drop1..2`, `raii1..4` | Drop-order quizzes (locals, fields, params, `let _`, temporaries); `defer` guard, rollback-on-drop, dropck (E0597), `Rc` leak                                                                                                         |
+| `40_interior_mutability` | `cell1..4`             | `Cell` get/set vs `replace`/`take` (E0594/E0599); `OnceCell` memos; `OnceLock`/`LazyLock` statics (E0277/E0015); `thread_local!`                                                                                                      |
+| `41_memory_layout`       | `layout1..2`           | Interview quiz: `size_of` of fat pointers, niches, closures, enum tags, `repr(C)` / packed padding; reorder a `repr(C)` header                                                                                                        |
 
 ### Traits & Abstraction · the trait-system prerequisites (before async & concurrency)
 
 > All **std + 100% safe**. Ordered right after smart pointers because the async
 > and concurrency modules quietly assume closures and dynamic dispatch.
 
-| Directory         | Exercises      | Focus                                                                                                                                                                                                                                                             |
-|-------------------|----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `32_dispatch`     | `dispatch1..6` | Trait objects (`Box<dyn>` fat pointers), object safety (`where Self: Sized`), static vs dynamic vs **enum** dispatch; `Any` downcasting via trait upcasting; generic methods vs dyn compatibility (E0038, visitor double dispatch)                                |
-| `33_closures`     | `closure1..8`  | Capture modes & `move`; the `Fn` / `FnMut` / `FnOnce` hierarchy; returning `impl Fn` vs `Box<dyn Fn>`; higher-ranked `for<'a>` bounds, let-bound closure inference, async closures & `AsyncFnMut`                                                                 |
-| `34_iterators`    | `iter1..4`     | Implementing `Iterator` (just `next`); a custom lazy adapter; adapter **laziness**; `IntoIterator` for `for` loops                                                                                                                                                |
-| `35_error_design` | `err1..6`      | `?` as `From::from`; custom error enums; `Display` + `Error::source()` chains; `From` vs `TryFrom`; `.context()` chains via an extension trait, `Box<dyn Error + Send + Sync>` across threads, downcasting, why an anyhow-style `Report` cannot implement `Error` |
-| `deep-dive/`      | `vtable_lab`   | The `&dyn Trait` fat pointer built by hand — a data pointer + a static table of function pointers                                                                                                                                                                 |
+| Directory            | Exercises                      | Focus                                                                                                                                                                                                                                                             |
+|----------------------|--------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `32_dispatch`        | `dispatch1..6`                 | Trait objects (`Box<dyn>` fat pointers), object safety (`where Self: Sized`), static vs dynamic vs **enum** dispatch; `Any` downcasting via trait upcasting; generic methods vs dyn compatibility (E0038, visitor double dispatch)                                |
+| `33_closures`        | `closure1..8`                  | Capture modes & `move`; the `Fn` / `FnMut` / `FnOnce` hierarchy; returning `impl Fn` vs `Box<dyn Fn>`; higher-ranked `for<'a>` bounds, let-bound closure inference, async closures & `AsyncFnMut`                                                                 |
+| `34_iterators`       | `iter1..4`                     | Implementing `Iterator` (just `next`); a custom lazy adapter; adapter **laziness**; `IntoIterator` for `for` loops                                                                                                                                                |
+| `35_error_design`    | `err1..6`                      | `?` as `From::from`; custom error enums; `Display` + `Error::source()` chains; `From` vs `TryFrom`; `.context()` chains via an extension trait, `Box<dyn Error + Send + Sync>` across threads, downcasting, why an anyhow-style `Report` cannot implement `Error` |
+| `42_coherence`       | `coherence1..3`                | Orphan rule (E0117) and newtypes, legal `From<Local> for Foreign`, blanket-impl overlap (E0119), extension traits (E0118, E0390)                                                                                                                                  |
+| `43_assoc_types`     | `assoc1..2`, `gat1`            | Associated types vs type params (E0107, E0119, E0283); `Add<Rhs>`/`Output`, `&a + &b`, `T: Add<Output = T>`; GAT lending iterator                                                                                                                                 |
+| `44_trait_contracts` | `contracts1..3`                | `Hash` agreeing with a manual `Eq`; `Ord` agreeing with `Eq` and `PartialOrd`; `f64`: `total_cmp`, float keys, `Reverse` min-heap                                                                                                                                 |
+| `45_sized_deref`     | `deref1..2`, `borrow1`, `cow1` | Deref coercion and its limits, Deref is not inheritance, `K: Borrow<Q>` lookups and an `Rc<str>` interner, `Cow`-returning APIs                                                                                                                                   |
+| `47_type_level`      | `builder1`, `typestate1`       | `Default` + struct update, a validating builder (`impl Into`, `IntoIterator`, `#[must_use]`), `PhantomData` typestate, sealing                                                                                                                                    |
+| `50_testing_seams`   | `seams1..3`                    | Trait seams for dependencies; `RefCell`/`Cell` mocks behind `&self`; `Send + Sync` fake clocks: token-bucket limiter, TTL cache                                                                                                                                   |
+| `deep-dive/`         | `vtable_lab`                   | The `&dyn Trait` fat pointer built by hand — a data pointer + a static table of function pointers                                                                                                                                                                 |
 
 ### Module 2 · Data structures: reading and hand-writing
 
-| Directory / crate    | Exercise      | Focus                                                                                                                           |
-|----------------------|---------------|---------------------------------------------------------------------------------------------------------------------------------|
-| `27_data_structures` | `linkedlist1` | A **safe** singly linked list with `Option<Box<Node>>` (`Option::take` is key)                                                  |
-| `27_data_structures` | `ringbuffer1` | A `Vec`-backed ring buffer: `head`/`len` + modular wraparound — the core of `VecDeque`                                          |
-| `27_data_structures` | `hashtable1`  | A separate-chaining hash map: `DefaultHasher` to pick a bucket + collision handling                                             |
-| `27_data_structures` | `linkedlist2` | LeetCode `ListNode` classic: reverse in place, relinking the ORIGINAL nodes (checked by node identity)                          |
-| `27_data_structures` | `linkedlist3` | Stable merge of two sorted lists through a `&mut` tail cursor                                                                   |
-| `27_data_structures` | `linkedlist4` | Fast/slow-pointer split fails with E0502, so count first and walk one `&mut` cursor; remove nth from the end with `checked_sub` |
-| `deep-dive/`         | `unsafe_list` | A **doubly** linked list with `NonNull` **raw pointers**, just like the standard library's `LinkedList`                         |
-| `deep-dive/`         | `raw_vec`     | `Vec` from scratch: `Layout`/`alloc`/`realloc` growth, `ptr::write`/`read`, and a `Drop` that frees once                        |
+| Directory / crate    | Exercise      | Focus                                                                                                                              |
+|----------------------|---------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `27_data_structures` | `linkedlist1` | A **safe** singly linked list with `Option<Box<Node>>` (`Option::take` is key)                                                     |
+| `27_data_structures` | `ringbuffer1` | A `Vec`-backed ring buffer: `head`/`len` + modular wraparound — the core of `VecDeque`                                             |
+| `27_data_structures` | `hashtable1`  | A separate-chaining hash map: `DefaultHasher` to pick a bucket + collision handling                                                |
+| `27_data_structures` | `linkedlist2` | LeetCode `ListNode` classic: reverse in place, relinking the ORIGINAL nodes (checked by node identity)                             |
+| `27_data_structures` | `linkedlist3` | Stable merge of two sorted lists through a `&mut` tail cursor                                                                      |
+| `27_data_structures` | `linkedlist4` | Fast/slow-pointer split fails with E0502, so count first and walk one `&mut` cursor; remove nth from the end with `checked_sub`    |
+| `59_arena`           | `arena1`      | Arena tree: nodes in one `Vec` linked by typed `NodeId`s; `add_child`, loop-based `path_to_root`, `lca`; `Send`, deep `clone`      |
+| `59_arena`           | `arena2`      | Generational slab: `(index, generation)` ids make stale handles `None`; `mem::replace` remove, free list, retire at `u32::MAX`     |
+| `60_lru_cache`       | `lru1`        | O(log n) warm-up: `HashMap<K, (V, u64)>` + `BTreeMap<u64, K>` of ticks, evict with `pop_first`; every touch must drop the old tick |
+| `60_lru_cache`       | `lru2`        | O(1) LRU in safe Rust: an index-linked list in a `Vec` (`unlink` / `push_front`); eviction reuses the tail slot via `mem::replace` |
+| `60_lru_cache`       | `lru3`        | Applies `borrow1`: `get<Q>` with `K: Borrow<Q>, Q: ?Sized` so `String` keys take a `&str`; a `peek(&self)` that is not a use       |
+| `deep-dive/`         | `unsafe_list` | A **doubly** linked list with `NonNull` **raw pointers**, just like the standard library's `LinkedList`                            |
+| `deep-dive/`         | `raw_vec`     | `Vec` from scratch: `Layout`/`alloc`/`realloc` growth, `ptr::write`/`read`, and a `Drop` that frees once                           |
 
 ### Module 3 · Async model, fully dissected — hand-written async runtime (the focus)
 
-| Directory / crate  | Exercise           | Focus                                                                                                                 |
-|--------------------|--------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `28_futures`       | `futures1..2`      | The `Future`/`Poll` trait; `Poll::Pending` and using the `Waker` to ask to be re-polled                               |
-| `28_futures`       | `futures3`         | **Hand-written state machine**: exactly what an `async fn` desugars to                                                |
-| `28_futures`       | `futures4`         | `async`/`await` sugar == the state machine                                                                            |
-| `29_async_runtime` | `runtime1`         | Building a `Waker` safely with `std::task::Wake`                                                                      |
-| `29_async_runtime` | `runtime2`         | The executor core: the `block_on` poll loop (park/unpark)                                                             |
-| `29_async_runtime` | `runtime3`         | **Multi-task executor**: a ready-queue + a self-rescheduling `Waker` (the skeleton of tokio's current-thread runtime) |
-| `29_async_runtime` | `runtime4`         | Why `Pin` exists, and how to safely satisfy `poll`'s `Pin<&mut Self>`                                                 |
-| `deep-dive/`       | `raw_waker`        | Hand-written `RawWaker` + `RawWakerVTable` (four function pointers) — the real `Waker`                                |
-| `deep-dive/`       | `self_referential` | Self-referential struct + `Pin`/`PhantomPinned` — what `Pin` is really protecting                                     |
+| Directory / crate      | Exercise           | Focus                                                                                                                       |
+|------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| `28_futures`           | `futures1..2`      | The `Future`/`Poll` trait; `Poll::Pending` and using the `Waker` to ask to be re-polled                                     |
+| `28_futures`           | `futures3`         | **Hand-written state machine**: exactly what an `async fn` desugars to                                                      |
+| `28_futures`           | `futures4`         | `async`/`await` sugar == the state machine                                                                                  |
+| `29_async_runtime`     | `runtime1`         | Building a `Waker` safely with `std::task::Wake`                                                                            |
+| `29_async_runtime`     | `runtime2`         | The executor core: the `block_on` poll loop (park/unpark)                                                                   |
+| `29_async_runtime`     | `runtime3`         | **Multi-task executor**: a ready-queue + a self-rescheduling `Waker` (the skeleton of tokio's current-thread runtime)       |
+| `29_async_runtime`     | `runtime4`         | Why `Pin` exists, and how to safely satisfy `poll`'s `Pin<&mut Self>`                                                       |
+| `57_async_combinators` | `join1`            | Hand-written `Join` of `Unpin` children: poll both every poll, keep outputs, never re-poll; `max(n_a, n_b) + 1` polls       |
+| `57_async_combinators` | `select1`          | Hand-written `Select` returning `Either`: biased poll order; dropping the loser on the deciding poll is what cancels it     |
+| `57_async_combinators` | `cancel1`          | Cancel safety: a `select` heartbeat drops a half-read line; keep progress in the reader, or pin one future outside the loop |
+| `58_leaf_futures`      | `oneshot1`         | Oneshot channel leaf: store the latest waker under the value's lock, `Err(Canceled)` when the sender drops, no lost wakeups |
+| `58_leaf_futures`      | `timer1`           | Non-blocking `Sleep`: register once with a timer thread and keep the latest waker; why `thread::sleep` in async is a bug    |
+| `58_leaf_futures`      | `yield1`           | Cooperative yielding: why `async fn yield_now() {}` never yields; a `YieldNow` leaf and a CPU loop that yields per batch    |
+| `deep-dive/`           | `raw_waker`        | Hand-written `RawWaker` + `RawWakerVTable` (four function pointers) — the real `Waker`                                      |
+| `deep-dive/`           | `self_referential` | Self-referential struct + `Pin`/`PhantomPinned` — what `Pin` is really protecting                                           |
 
 **The async trinity**: `Future` defines the computation · `Waker` handles notification · `Pin` guarantees safety.
 
 ### Module 4 · Advanced: `Send` / `Sync`, atomics, and fearless concurrency
 
-| Directory      | Exercise     | Focus                                                                                                            |
-|----------------|--------------|------------------------------------------------------------------------------------------------------------------|
-| `30_send_sync` | `send_sync1` | `Rc` is `!Send`; use `Arc` across threads                                                                        |
-| `30_send_sync` | `send_sync2` | `Arc<Mutex<T>>` for shared mutable state                                                                         |
-| `30_send_sync` | `send_sync3` | Inferring the `Send`/`Sync` marker traits, and making a type `Send + Sync`                                       |
-| `36_atomics`   | `atomics1`   | Lock-free `AtomicUsize` counter with `fetch_add(Relaxed)`                                                        |
-| `36_atomics`   | `atomics2`   | `Release`/`Acquire` publish-subscribe: the happens-before edge that publishes data                               |
-| `36_atomics`   | `atomics3`   | A CAS-based spinlock (`compare_exchange` + `spin_loop`)                                                          |
-| `36_atomics`   | `atomics4`   | A `compare_exchange_weak` / `fetch_update` retry loop: a bounded counter tested with a deterministic race window |
-| `36_atomics`   | `atomics5`   | The ABA problem, fixed with a version-tagged `(tag, idx)` head in a lock-free free list                          |
-| `deep-dive/`   | `myarc`      | `Arc` from scratch: `Relaxed` clone, `Release` drop + `Acquire` fence before free                                |
-| `deep-dive/`   | `loom_lab`   | Model-check the `atomics2` handoff under `loom` (`--cfg loom`) — why `Relaxed` breaks                            |
+| Directory           | Exercise      | Focus                                                                                                                              |
+|---------------------|---------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `30_send_sync`      | `send_sync1`  | `Rc` is `!Send`; use `Arc` across threads                                                                                          |
+| `30_send_sync`      | `send_sync2`  | `Arc<Mutex<T>>` for shared mutable state                                                                                           |
+| `30_send_sync`      | `send_sync3`  | Inferring the `Send`/`Sync` marker traits, and making a type `Send + Sync`                                                         |
+| `56_async_bounds`   | `async_send1` | A std `MutexGuard` held across `.await` makes a spawned future `!Send`; why `drop(guard)` fails; end the guard's scope             |
+| `56_async_bounds`   | `async_send2` | `spawn` needs `'static`: E0521/E0373 from borrowing into tasks, `async move` and E0382; move clones or an `Arc` in                 |
+| `56_async_bounds`   | `async_send3` | `async fn` in a trait gives generics no `Send` (E0277): declare `-> impl Future + Send`, then fix the impl that breaks it          |
+| `56_async_bounds`   | `async_send4` | Dyn-compatible async trait (E0038): `Pin<Box<dyn Future + Send + 'a>>`, `Send + Sync` supertraits, lazy `Box::pin` impls           |
+| `51_scoped_threads` | `scope1`      | Why `thread::spawn` needs `'static` (E0521); `thread::scope` lets two threads borrow the caller's slice, in place, both at once    |
+| `51_scoped_threads` | `scope2`      | One disjoint `&mut` chunk per scoped thread (E0499): `chunks_mut`, the n = 0 / len = 0 edges, no lock, worker panics propagate     |
+| `51_scoped_threads` | `scope3`      | Two-phase parallel prefix sum: a shared `Barrier` sized to the real worker count before reading earlier chunks' totals             |
+| `52_condvar`        | `condvar1`    | A blocking MPMC queue: `Condvar::wait` in a `while` loop (spurious and stolen wakeups), a waiter count, lost wakeups               |
+| `52_condvar`        | `condvar2`    | A bounded queue with `not_empty` / `not_full` condvars: `try_push` hands the item back, `push` blocks, each `pop` wakes a producer |
+| `52_condvar`        | `condvar3`    | A counting semaphore from `Mutex` + `Condvar` whose `Permit` gives itself back (and wakes a waiter) in `Drop`, even on panic       |
+| `53_lock_hazards`   | `deadlock1`   | Can safe Rust deadlock? Opposite-order bank transfers: reject the same-account re-lock, lock in one global order, stay atomic      |
+| `53_lock_hazards`   | `rwlock1`     | Readers share an `RwLock` and writers wait for them; std has no upgradable read, so get-or-insert re-checks under `write()`        |
+| `54_channels`       | `channel1`    | Bounded `sync_channel` + non-blocking `try_send`: `Full` is `Busy`, `Disconnected` is `Closed`; capacity 0 is a rendezvous         |
+| `54_channels`       | `channel2`    | Disconnect-driven pipeline shutdown: drop every stray `Sender`, return on a failed `send`; drop the `Sender`, then join            |
+| `54_channels`       | `channel3`    | Actor owning a `HashMap`: a reply channel in each request (E0559 / E0026); ignore callers that left; `Gone` if the actor dies      |
+| `36_atomics`        | `atomics1`    | Lock-free `AtomicUsize` counter with `fetch_add(Relaxed)`                                                                          |
+| `36_atomics`        | `atomics2`    | `Release`/`Acquire` publish-subscribe: the happens-before edge that publishes data                                                 |
+| `36_atomics`        | `atomics3`    | A CAS-based spinlock (`compare_exchange` + `spin_loop`)                                                                            |
+| `36_atomics`        | `atomics4`    | A `compare_exchange_weak` / `fetch_update` retry loop: a bounded counter tested with a deterministic race window                   |
+| `36_atomics`        | `atomics5`    | The ABA problem, fixed with a version-tagged `(tag, idx)` head in a lock-free free list                                            |
+| `deep-dive/`        | `myarc`       | `Arc` from scratch: `Relaxed` clone, `Release` drop + `Acquire` fence before free                                                  |
+| `deep-dive/`        | `loom_lab`    | Model-check the `atomics2` handoff under `loom` (`--cfg loom`) — why `Relaxed` breaks                                              |
 
 > The `unsafe` use cases live in the `deep-dive/` labs, each with `// SAFETY:` comments.
 > "Read the serde/tokio source" and "the rustc frontend: AST/HIR/MIR" are further reading — see the links in each README.
 
 ### Module 5 · Interview & debugging practice
 
-| Directory      | Exercise     | Focus                                                                                                                       |
-|----------------|--------------|-----------------------------------------------------------------------------------------------------------------------------|
-| `31_debugging` | `debugging1` | `#[derive(Debug)]` + `{:?}` / `{:#?}`                                                                                       |
-| `31_debugging` | `debugging2` | Integer overflow: **panics** in debug, silently **wraps** in release — `checked`/`saturating`/`wrapping`                    |
-| `31_debugging` | `debugging3` | Implement `Display` / `Debug` by hand                                                                                       |
-| `31_debugging` | `debugging4` | `RefCell` runtime `BorrowMutError`: aliasing-XOR-mutability enforced at run time                                            |
-| `31_debugging` | `debugging5` | Iterator invalidation caught at **compile time**; fix with `retain`                                                         |
-| `31_debugging` | `debugging6` | A guard kept alive by a `match` scrutinee temporary ("RefCell already borrowed"); splitting two fields through one `RefMut` |
-| `31_debugging` | `debugging7` | `while let` holds its guard for the whole body; an `if let` then-block still holds it in edition 2024                       |
-| `31_debugging` | `debugging8` | `Mutex` self-deadlock from a `match` scrutinee guard (caught with `try_lock`); a quiz on where each guard dies              |
+| Directory           | Exercise       | Focus                                                                                                                                |
+|---------------------|----------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `31_debugging`      | `debugging1`   | `#[derive(Debug)]` + `{:?}` / `{:#?}`                                                                                                |
+| `31_debugging`      | `debugging2`   | Integer overflow: **panics** in debug, silently **wraps** in release — `checked`/`saturating`/`wrapping`                             |
+| `31_debugging`      | `debugging3`   | Implement `Display` / `Debug` by hand                                                                                                |
+| `31_debugging`      | `debugging4`   | `RefCell` runtime `BorrowMutError`: aliasing-XOR-mutability enforced at run time                                                     |
+| `31_debugging`      | `debugging5`   | Iterator invalidation caught at **compile time**; fix with `retain`                                                                  |
+| `31_debugging`      | `debugging6`   | A guard kept alive by a `match` scrutinee temporary ("RefCell already borrowed"); splitting two fields through one `RefMut`          |
+| `31_debugging`      | `debugging7`   | `while let` holds its guard for the whole body; an `if let` then-block still holds it in edition 2024                                |
+| `31_debugging`      | `debugging8`   | `Mutex` self-deadlock from a `match` scrutinee guard (caught with `try_lock`); a quiz on where each guard dies                       |
+| `63_slices_strings` | `window1`      | Two pointers: `len() - 1` underflow on an empty slice, `i32` sum overflow (widen to `i64`), three-sum with deduped triples           |
+| `63_slices_strings` | `window2`      | Unicode-safe sliding window: `char_indices`, char-boundary panics, chars vs bytes, a let chain, return a `&str` slice                |
+| `63_slices_strings` | `window3`      | Merge intervals: `sort_unstable_by_key`, then extend `last_mut()` or push in one let chain; touching and contained intervals         |
+| `63_slices_strings` | `window4`      | `partition_point` bounds, `binary_search` on duplicates, `(lo + hi) / 2` overflow vs `midpoint`, binary search on the answer         |
+| `66_checked_math`   | `checkedmath1` | Overflow-safe `a * b / d` on u128: exact 256-bit product via `carrying_mul`, floor and ceil without the `(x + d - 1)` overflow       |
+| `66_checked_math`   | `checkedmath2` | Vault share math: round what the user receives down and what the user pays up, so no trade can lower the share price                 |
+| `66_checked_math`   | `checkedmath3` | Fixed-point `Decimal(u128)` with 18 decimals: strict `FromStr`, canonical `Display`, checked mul/div through `mul_div`               |
+| `66_checked_math`   | `checkedmath4` | Deterministic ledger: `BTreeMap` order, all-or-nothing integer bps interest, a specified FNV-1a digest, `u64::try_from` over `as`    |
+| `67_code_review`    | `review1`      | Unguided review of a ledger PR: seven planted bugs found only through symptom-named failing tests; rank them, then fix each in place |
+| `67_code_review`    | `review2`      | Clippy-graded idiomatic refactor (`strict_clippy`, seven default lints) that must keep behavior: first-wins tie, u64 sum, borrows    |
 
 High-frequency interview topics (ownership, borrowing, lifetimes, `Send`/`Sync`, the
 async model) are spread across the exercises above; after finishing each module, use
