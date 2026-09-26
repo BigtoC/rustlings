@@ -3033,6 +3033,49 @@ Other options:
 
 Note that `HashMap::insert` keeps the FIRST key when an equal key is inserted again. That is why `spelling` still returns `Content-Type`. For the related `Borrow` contract, and why a case-insensitive key must not implement `Borrow<str>`, see `45_sized_deref/borrow1`."""
 
+[[exercises]]
+name = "contracts2"
+dir = "44_trait_contracts"
+hint = """
+Two contract violations.
+
+(1) `PartialOrd` is derived. A derived order is lexicographic in field DECLARATION order, so it compares `name` first. `BinaryHeap` compares with `<=` and `slice::sort` with `<`, so the heap runs jobs in reverse alphabetical order. Clippy's deny-by-default `derive_ord_xor_partial_ord` flags the mix.
+
+(2) `Ord::cmp` compares only `priority`, so it calls different jobs `Equal`. A `BTreeSet` decides "already present" with `cmp` alone: `insert` refuses the second job with the same priority, and `contains` finds a job that was never inserted. A set built with `collect` is sorted with `<` and then searched with `cmp`. So while the two disagree, it can even miss a job that IS in it (`a_collected_btree_set_finds_its_own_jobs`).
+
+Put the ordering logic in `cmp` and let `partial_cmp` defer to it:
+```
+#[derive(Debug, PartialEq, Eq)]
+struct Job {
+    name: String,
+    priority: u8,
+    submitted: u64,
+}
+
+impl PartialOrd for Job {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Job {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.priority
+            .cmp(&other.priority)
+            .then_with(|| other.submitted.cmp(&self.submitted))
+            .then_with(|| self.name.cmp(&other.name))
+    }
+}
+```
+`BinaryHeap` is a max-heap, so "greater" must mean "runs sooner". A higher priority is greater, and on a tie the EARLIER job is greater, hence `other.submitted.cmp(&self.submitted)`. The final tie-break on `name` (either direction) makes `cmp` return `Equal` exactly when the derived `==` is true (all three fields match), so the `BTreeSet` keeps every distinct job. A tuple compare is an equally good `cmp`: `(self.priority, Reverse(self.submitted), &self.name).cmp(&(other.priority, Reverse(other.submitted), &other.name))` with `use std::cmp::Reverse;`.
+
+Wrong turns:
+- Dropping the `name` tie-break passes the heap tests but loses jobs in the set.
+- Deriving all four traits with the fields reordered to `priority, submitted, name` gives LIFO order, because a later `submitted` is greater. The tests catch both.
+- Putting the logic in `partial_cmp` and writing `cmp` as `self.partial_cmp(other).unwrap()` passes the tests, but clippy warns with `non_canonical_partial_ord_impl`: the logic belongs in `Ord`.
+
+`Reverse` and min-heaps come back in `contracts3`."""
+
 # MODULE 2 · DATA STRUCTURES — hand-written std-style containers (safe)
 
 [[exercises]]
