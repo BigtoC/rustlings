@@ -4959,6 +4959,52 @@ Wrong answers the tests catch:
 
 Tokio's `mpsc::channel(n)` offers the same two choices: `send(..).await` waits, `try_send` fails with `TrySendError::Full` or `Closed`. The planned deep-dive lab `backend-tokio-lab` maps `Full` to HTTP 503. See also `52_condvar/condvar2`, which builds a bounded queue by hand from a `Mutex` and two `Condvar`s."""
 
+[[exercises]]
+name = "channel2"
+dir = "54_channels"
+hint = """
+Two separate bugs, each with its own tests.
+
+1. The tests that run the whole input through fail with the watchdog's "pipeline never shut down: a Sender is still alive". `for x in rx` and the consumer's `collect()` end only once EVERY Sender of their channel has been dropped. `run_pipeline` gives each stage a `clone()` of its output Sender and keeps the original alive in its own scope until it returns. So `collect()` waits for `batches_tx` to be dropped, the `batch` stage waits for `squares_tx`, `square` waits for `numbers_tx`, and `run_pipeline` never gets past `collect()` to drop any of them. Move the original Senders into the stage threads instead of cloning them:
+```
+let stages = [
+    spawn_stage("source", move || source(numbers, numbers_tx)),
+    spawn_stage("square", move || square(numbers_rx, squares_tx)),
+    spawn_stage("batch", move || batch(squares_rx, batches_tx)),
+];
+```
+Keeping the clones and calling `drop(numbers_tx); drop(squares_tx); drop(batches_tx);` right after spawning works too. Dropping them after `collect()` is too late, and dropping only `batches_tx` is not enough. Now the source returns when it runs out of numbers, its Sender is dropped, `square`'s loop ends, and so on down to the consumer.
+
+2. `a_consumer_that_stops_early_shuts_every_stage_down` and `a_limit_of_zero_hangs_up_before_reading` find `["source", "square", "batch"]` panicked, and the three single-stage tests fail the same way. Once the consumer drops its Receiver, the next `send` into that link fails, and `unwrap()` panics. A failed send means "nobody wants this any more", so return. Returning drops the stage's own Receiver, the stage upstream fails its next send too, and the stop travels back to the source:
+```
+fn source(numbers: impl Iterator<Item = u64>, out: SyncSender<u64>) {
+    for n in numbers {
+        if out.send(n).is_err() {
+            return;
+        }
+    }
+}
+
+// In `square`:
+for n in input {
+    if out.send(n * n).is_err() {
+        return;
+    }
+}
+
+// In `batch`, inside the loop:
+if out.send(full).is_err() {
+    return;
+}
+// and after the loop:
+if !current.is_empty() {
+    let _ = out.send(current);
+}
+```
+`break` works as well as `return`. Don't `unwrap` the flush: it can fail too (`batch_does_not_panic_flushing_into_a_closed_link`). A plain `let _ = out.send(..)` in every loop is wrong the other way: nothing panics, but every stage keeps working for a consumer that left. The early-stop test counts the numbers pulled and catches it (all 10000 instead of a few dozen), and `square_returns_when_its_downstream_hangs_up` waits until its watchdog fires. Timeouts, sentinel values and reading the whole input up front are ruled out too: a stage must stop only because its input disconnected or its output hung up.
+
+The bounded links matter here: a stage blocked in `send` on a full link is woken with the error the moment its receiver goes away. `drop_the_sender_first_then_join_the_stage` is the thread-pool form of rule 1: drop the job queue's Sender, then join the workers, as the Book's `ThreadPool` does in its `Drop` impl. See also `20_threads/threads3`, where each producer gets its own `tx.clone()`."""
+
 # MODULE 4 · ATOMICS — atomic operations & memory ordering
 [[exercises]]
 name = "atomics1"
