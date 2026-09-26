@@ -1844,6 +1844,74 @@ See `47_type_level/typestate1` for a `PhantomData` state marker,
 `40_interior_mutability` for why every cell is invariant, `44_trait_contracts`
 for the `Hash` / `Eq` contract, and `30_send_sync` for the auto-trait rules."""
 
+[[exercises]]
+name = "variance2"
+dir = "38_variance"
+hint = """
+Part A: E0499 on the second `add`, E0502 on `len()`, and E0499 plus E0621 in
+`intern_all`. `fn add(&'a mut self, word: &'a str)` on an `Interner<'a>` asks
+for a `&'a mut Interner<'a>`. Your interner is an `Interner<'x>`, and behind a
+`&mut` that type cannot shrink (`&mut T` is invariant in `T`). So `'a` must be
+`'x`, which lasts until the interner's last use: the first call borrows it
+mutably for the rest of its life. Give the borrow of `self` its own, elided
+lifetime, and keep `'a` for the stored word only:
+```
+fn add(&mut self, word: &'a str) -> usize {
+    // body unchanged
+}
+```
+Now each call borrows the interner for that call only, while `word` must still
+outlive the interner (the `Vec<&'a str>` keeps it). `intern_all` compiles
+unchanged. `fn add<'b>(&'b mut self, word: &'a str)` is the same fix with the
+lifetime written out.
+
+Wrong fixes for Part A:
+- E0621's help (`interner: &'a mut Interner<'a>`): the E0499 in `intern_all`'s
+  loop stays, because every pass still borrows `*interner` for all of `'a`,
+  and every caller of `intern_all` inherits the forever-borrow.
+- `fn add<'b>(&'b mut self, word: &'b str)` pushes a `&'b str` into a
+  `Vec<&'a str>`, which forces `'b` to be `'a` again.
+- Storing `String`s or leaking the words fails the pointer tests.
+- A `RefCell` with `add(&'a self)` still fails: the `RefCell` makes `Interner`
+  invariant too, so `intern_all` cannot lend a `&'a Interner<'a>` either (E0621
+  again).
+- A `RefCell` with `add(&self)` compiles, but it hides a signature bug behind
+  a run-time borrow flag, and `a_filled_interner_can_be_shared` rejects it
+  (E0277: a `RefCell` is not `Sync`).
+
+Part B: E0502 and E0499 on `rest`. `&'a mut &'a str` uses one lifetime for the
+short borrow of the caller's `rest` variable and for the long-lived text.
+Invariance makes the two equal, so `rest` stays mutably borrowed for as long as
+its own lifetime reaches. Split them:
+```
+struct WordCursor<'s, 'a> {
+    input: &'s mut &'a str,
+}
+
+impl<'s, 'a> WordCursor<'s, 'a> {
+    fn new(input: &'s mut &'a str) -> Self {
+        WordCursor { input }
+    }
+
+    fn next_word(&mut self) -> Option<&'a str> {
+        // body unchanged
+    }
+}
+```
+`next_word` copies the `&'a str` out of `*self.input`, so the words borrow the
+text for `'a`, never the cursor or `rest`. Wrong fixes the tests catch:
+- Returning `Option<&str>` (elided to the `&mut self` borrow) keeps the cursor
+  borrowed while you hold a word (E0499).
+- `&'a mut &'s str` with `-> Option<&'a str>` still ties the words to the
+  borrow of `rest` (E0502, E0499).
+- Copying `*input` into the cursor stops advancing the caller's `rest`.
+
+In a free function you need no second name, because elision already gives the
+`&mut` its own lifetime: `fn next_word<'a>(input: &mut &'a str) -> Option<&'a str>`.
+That is the shape of `winnow`'s parsers. See `37_borrowck_errors/borrowck4` (a
+returned borrow that pins a `&mut`) and `25_lifetimes_deep/lifetimes6`
+(returning `&'a str` instead of a borrow of `self`)."""
+
 # MODULE 1 · SMART POINTERS — Box / Rc·Weak / RefCell
 
 [[exercises]]
