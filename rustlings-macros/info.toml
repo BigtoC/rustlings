@@ -3888,6 +3888,54 @@ with "has overflowed its stack" instead of reporting FAILED, look for recursion,
 or for a long list being dropped inside your function (its drop glue is
 recursive, see `linkedlist1`)."""
 
+# MODULE 2 · Arenas: Indices Instead of Pointers
+
+[[exercises]]
+name = "arena1"
+dir = "59_arena"
+hint = """
+All three bodies are empty, so each one fails with E0308 "mismatched types" (expected `NodeId` or `Vec<NodeId>`, found `()`). rustc suggests returning `parent` (or `a` / `b`). That compiles, but adds nothing (or only answers the ancestor case).
+
+add_child: the new node's id is the position it is about to take, `self.nodes.len()`. Index the parent FIRST, so an unknown parent panics while the tree is still untouched:
+```
+fn add_child(&mut self, parent: NodeId, value: T) -> NodeId {
+    let id = NodeId(self.nodes.len());
+    self.nodes[parent.0].children.push(id);
+    self.nodes.push(NodeData {
+        value,
+        parent: Some(parent),
+        children: Vec::new(),
+    });
+    id
+}
+```
+Pushing the node first and linking the parent second fails `an_unknown_parent_panics_and_changes_nothing`. `add_child(NodeId(2), ..)` on a two-node tree then makes node 2 its own parent (a cycle that would send `path_to_root` into an endless loop), and `NodeId(99)` panics only after the orphan node is already in the `Vec`.
+
+path_to_root: follow the parent links in a loop. `std::iter::successors` yields `id`, then keeps applying `parent` until it returns `None`:
+```
+fn path_to_root(&self, id: NodeId) -> Vec<NodeId> {
+    std::iter::successors(Some(id), |&node| self.parent(node)).collect()
+}
+```
+A `while let Some(parent) = self.parent(cur)` loop that pushes onto a `Vec` works too. A recursive version aborts the whole test run with "has overflowed its stack" on the 200_000-deep chain.
+
+lca: both paths end at the root. Read from that end, they agree on every common ancestor and split right below the lowest one:
+```
+fn lca(&self, a: NodeId, b: NodeId) -> NodeId {
+    let path_a = self.path_to_root(a);
+    let path_b = self.path_to_root(b);
+    path_a
+        .iter()
+        .rev()
+        .zip(path_b.iter().rev())
+        .take_while(|(x, y)| x == y)
+        .last()
+        .map(|(&common, _)| common)
+        .expect("both paths end at the root")
+}
+```
+That is O(depth) time and space. The O(1)-extra-space answer interviewers like: count both depths (the number of parent hops), move the deeper node up until the depths match, then move both up in lockstep until they meet. Moving both up in lockstep WITHOUT equalizing the depths first fails the uneven-depth tests. A `HashSet` of `a`'s ancestors, then climbing from `b` until you hit one, is also O(depth). Calling `path_a.contains(..)` for every ancestor of `b` is O(depth^2). Rewriting the nodes as `Rc<RefCell<..>>` stops `a_tree_of_strings_can_move_to_another_thread` from compiling: E0277 "`Rc<..>` cannot be sent between threads safely". Related: `26_smart_pointers_deep/smartptr2` (the `Rc` / `Weak` version) and `37_borrowck_errors/borrowck1` (two `&mut` into one `Vec`)."""
+
 # MODULE 3 · ASYNC — Future / Poll
 
 [[exercises]]
