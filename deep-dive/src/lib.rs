@@ -19,6 +19,7 @@
 //! | [`myarc`] | Concurrency | `Arc` from scratch: an atomic strong count, and why `clone` can be `Relaxed` but `drop` needs `Release` + an `Acquire` fence |
 //! | [`ordering_lab`] | Concurrency | When `SeqCst` is needed: store buffering, IRIW and Peterson's lock checked on real threads, under loom and Miri; `CachePadded` against false sharing |
 //! | [`treiber`] | Concurrency | A Treiber stack on `AtomicPtr`: why eager freeing is a use-after-free (Miri) and deferred reclamation is not; `atomics3`'s spinlock under loom |
+//! | [`ffi_lab`] | M1 memory / Concurrency | FFI in edition 2024: `unsafe extern` and honest `safe fn`, `repr(C)`, `CString` ownership, a closure through a C callback, a `Send`-but-not-`Sync` C handle |
 //! | [`ub_zoo`] | M1 memory model | Undefined behavior case by case under Miri: aliasing, invalid values, use-after-free, data races, library UB, and an unsound covariant cell |
 //! | [`api_surface`] | Traits & Abstraction | Testing a library from outside: `compile_fail` doctests with positive controls, sealed traits and `#[non_exhaustive]` as another crate sees them, proptest shrinking, a semver table |
 //!
@@ -36,6 +37,7 @@
 //! ```
 
 pub mod api_surface;
+pub mod ffi_lab;
 pub mod myarc;
 pub mod ordering_lab;
 pub mod raw_vec;
