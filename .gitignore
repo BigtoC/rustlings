@@ -4,6 +4,7 @@ Cargo.lock
 !/Cargo.lock
 # The lab crates with crates.io dependencies pin the versions their tests were
 # checked against.
+!/backend-lab/Cargo.lock
 !/config-lab/Cargo.lock
 
 # State file

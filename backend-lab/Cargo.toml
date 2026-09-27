@@ -1,0 +1,37 @@
+# Backend lab for the advanced course: tokio, axum and tower in the shapes
+# backend interviews ask about (cancel safety, graceful shutdown, 503
+# backpressure, blocking in async, bounded fan-out). It has external
+# dependencies, so it sits outside the root workspace, like `deep-dive/`.
+# Run it with:  cargo test --manifest-path backend-lab/Cargo.toml
+[package]
+name = "backend-lab"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# `net` for the real HTTP server in `graceful_shutdown`.
+tokio = { version = "1.53", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+# `CancellationToken` needs no feature.
+tokio-util = { version = "0.7.19", default-features = false }
+# `tokio` + `http1` give `axum::serve`; everything else (JSON, forms, query
+# strings, tracing) stays off.
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
+# `util` for `ServiceExt::oneshot`; `load-shed` + `limit` for the middleware
+# version of 503 load shedding in `backpressure_http`.
+tower = { version = "0.5.3", default-features = false, features = ["limit", "load-shed", "util"] }
+# Added deliberately for `bounded_fanout`: `StreamExt::buffered`,
+# `buffer_unordered` and `TryStreamExt::try_collect`, the stream answer to
+# "at most K in flight".
+futures = { version = "0.3.34", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# `test-util` makes `#[tokio::test(start_paused = true)]` available: virtual
+# time that only moves when every task is idle, so timer tests are
+# deterministic and instant. `rt-multi-thread` is only for the
+# `block_in_place` tests in `blocking_in_async`.
+tokio = { version = "1.53", features = ["rt-multi-thread", "test-util"] }
+
+[lints.rust]
+# Nothing in this lab needs `unsafe`; the unsafe labs live in `deep-dive/`.
+unsafe_code = "forbid"

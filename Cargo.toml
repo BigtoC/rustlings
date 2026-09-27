@@ -5,8 +5,10 @@ exclude = [
   # Deep-dive labs deliberately use `unsafe`, so they live outside the
   # `unsafe_code = "forbid"` exercise workspace.
   "deep-dive",
-  # The lab crate with crates.io dependencies (serde / toml / proptest) is its
-  # own workspace root with its own CI job.
+  # The lab crates with crates.io dependencies (tokio / axum / tower, and
+  # serde / toml / proptest) are their own workspace roots with their own CI
+  # jobs.
+  "backend-lab",
   "config-lab",
 ]
 
