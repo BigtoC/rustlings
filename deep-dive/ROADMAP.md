@@ -23,8 +23,8 @@
 5. **Tiering**: 27 candidates in Tier 1, 16 in Tier 2, 7 deep-dive labs, 10 cut.
 
 Module numbers were assigned during the merge step and are kept when a module is
-built, so cross-references stay valid. Every Tier 1 and Tier 2 module is now
-built; the two unused numbers, 46 and 55, belong to cut modules. The directory number is only an ID: a module's place in the learner
+built, so cross-references stay valid. Every Tier 1 and Tier 2 module and every
+deep-dive lab is now built; the two unused numbers, 46 and 55, belong to cut modules. The directory number is only an ID: a module's place in the learner
 path is set by where its `[[exercises]]` entries go in `rustlings-macros/info.toml`.
 
 ### How to read an entry
@@ -85,15 +85,15 @@ Done:
 - [x] `65_performance` — `perf1..3` — built
 - [x] `68_mock_interviews` — `set_trie`, `set_edit_distance`, `set_kv_tx`, `set_kv_tx_part2` — built
 
-Deep-dive labs, not started:
+Deep-dive labs:
 
-- [ ] `deep-dive/src/ub_zoo.rs` (the Miri CI step is done: the `deep-dive-miri` job)
-- [ ] `deep-dive/src/ffi_lab.rs`
-- [ ] `deep-dive/tests/alloc_count.rs` + `deep-dive/src/perf_lab.rs`
-- [ ] `deep-dive/src/ordering_lab.rs` + `treiber.rs`
-- [ ] `deep-dive/src/api_surface.rs` + `deep-dive/tests/api_surface.rs`
-- [ ] Sibling crate `backend-lab/` (tokio / axum / tower)
-- [ ] New crate `config_lab` (serde + Cargo features)
+- [x] `deep-dive/src/ub_zoo.rs` + `deep-dive/scripts/check_ub_zoo.sh` (the Miri CI job plus a per-test diagnostic guard) — built
+- [x] `deep-dive/src/ffi_lab.rs` — built
+- [x] `deep-dive/tests/alloc_count.rs` + `deep-dive/src/perf_lab.rs` — built
+- [x] `deep-dive/src/ordering_lab.rs` + `treiber.rs` — built
+- [x] `deep-dive/src/api_surface.rs` + `deep-dive/tests/api_surface.rs` — built
+- [x] Sibling crate `backend-lab/` (tokio / axum / tower, plus `bounded_fanout`) — built
+- [x] Sibling crate `config-lab/` (serde + Cargo features; planned as `deep-dive/config_lab`) — built
 
 ## Tier 1
 
@@ -1132,13 +1132,13 @@ Theme: statement-first timed sets with part-2 follow-ups.
 
 ## Deep-dive labs
 
-Labs are complete reference implementations to read, tinker with and run, not fail-while-unsolved exercises. Some ship TODO-driven "finish this" parts or `#[ignore]`d demonstrations. Build them alongside the tiers they support.
+Labs are complete reference implementations to read, tinker with and run, not fail-while-unsolved exercises. Every lab below is built. As built, the learner modes the entries describe ("stubs start as `unimplemented!()`", "predictions start at 999") became "Try it" sections, because CI runs the lab tests; each broken variant stays in the source, labeled, and is demonstrated by a deterministic test that asserts the bug, a `#[should_panic]` loom model, a `compile_fail` doctest paired with a positive control, or an `#[ignore]`d test run by hand (under Miri for UB).
 
 ### In the existing `deep-dive/` crate
 
 Theme: `unsafe`, Miri, FFI, allocators, loom, and testing a library from outside.
 
-#### Lab: what exactly is UB, run under Miri, plus a Miri CI step
+#### Lab: what exactly is UB, run under Miri, plus a Miri CI step (built)
 
 - Slug `miri-ub-zoo` · placement: deep-dive-lab · module: `deep-dive/src/ub_zoo.rs` plus a Miri step in `.github/workflows/rust.yml` · interview value: **4/5**
 - Sharpest question: Name three kinds of UB that safe Rust cannot trigger but unsafe can. Is a data race UB, and is a race condition?
@@ -1154,7 +1154,25 @@ Theme: `unsafe`, Miri, FFI, allocators, loom, and testing a library from outside
   - Fold-in from the cut `uninit-lab`: one case showing that uninitialized memory is UB even for integers, and that `Vec::with_capacity(n)` plus `set_len(n)` plus assigning elements of a `Vec<String>` drops garbage (fix: `spare_capacity_mut` + write + `set_len`). Verified: that starter is rejected by clippy's deny-by-default `uninit_vec`, so it needs a justified `#[allow(clippy::uninit_vec)]` or the deep-dive CI step `clippy --all-targets -D warnings` goes red.
   - Already absorbs the dropped `miri_hunt` cases (`split_at_mut` aliasing, `assume_init`, transmute to `bool`) and the `variance_soundness` demo.
 
-#### Lab: FFI with edition-2024 unsafe extern and safe fn, repr(C), CString ownership, closure trampolines
+**As built** (see `deep-dive/src/ub_zoo.rs`, `deep-dive/scripts/check_ub_zoo.sh`; adversarially reviewed). Deviations and verified corrections:
+
+- Parts: `ub_zoo` (built); `unsound_covariant_cell` (merged); `ci_miri_job` (built).
+- The fixed_* twins ship implemented, not as unimplemented!(). The ROADMAP's learner mode became the module's "Try it" section: run a ub_* case natively, compare SB and TB on ub_split_at_mut_via_index, give GoodCell BadCell's covariant marker (the compile_fail doctest then fails), put split_at_mut_overlapping into fixed_split_at_mut (SB fails at the return, TB passes), try -Zmiri-ignore-leaks and --release, and break a ub_* case and rerun the guard.
+- ci_miri_job was already done: the existing deep-dive-miri job runs every non-ignored test and doctest under SB and TB with strict provenance. The new part is deep-dive/scripts/check_ub_zoo.sh plus one CI step. The script lists the ignored ub_* tests and requires the list to be non-empty and equal to the ub_* fns in the source. It then runs each test alone under both models and matches the output against the `// miri-expect` ERE above it (PASS means Miri must accept the test). It takes about 27 s locally for 17 tests (34 Miri runs).
+- ROADMAP command correction: `--exact` needs the full test path, and `--lib` skips the doctest harness, so the working command is `cargo +nightly miri test --lib -- --ignored --exact ub_zoo::tests::<name>`, run in deep-dive/. Each ub_* test's doc comment now gives it.
+- Nightly drift, verified. Up to nightly 1.99 (2026-07-23), std tagged get_unchecked's precondition check `check_language_ub`, which is off under Miri, so Miri reported "`assume` called with `false`". Nightly 1.101 (2026-09-26), what CI installs today, tags it `check_library_ub` ("Hitting the `assume` provides worse const-eval and Miri diagnostics"), so Miri reports the same precondition abort as a native debug run. The guard's expectation accepts both wordings. All other diagnostics are unchanged on 1.101.
+- Aliasing cases are UB under both models where possible. ub_split_at_mut_via_index (whole-slice reborrows) is the documented SB-only case; Tree Borrows accepts it. The two-&mut case reuses the first reference after writing through the second. split_at_mut_overlapping fails SB at the retag in the return and TB at the read of left[2].
+- Library vs language UB was measured, not assumed. from_utf8_unchecked on invalid bytes passes Miri while only len() and as_bytes() touch it (the Reference only requires a str to be initialized). It fails once chars() builds an invalid char, because char::from_u32_unchecked's check is check_language_ub. set_len past the capacity is check_library_ub, so Miri reports the abort. With --release, debug assertions are off: the set_len case passes, and get_unchecked reports the `assume` on either nightly.
+- 12 of the 17 ub_* tests pass natively (debug, aarch64-apple-darwin). The other 5 abort the whole test binary with SIGABRT: std precondition checks in get_unchecked, set_len, char::from_u32_unchecked (via chars()) and copy_nonoverlapping (the BadCell exploit), plus rustc's misaligned-pointer check. The docs therefore say to run the cases one at a time. In release, the unaligned read and get_unchecked pass.
+- The compile_fail,E0597 doctest has a positive control: the same exploit as a no_run doctest on BadCell, differing only in the type name. Stable rustdoc does not check the code. Nightly rustdoc (1.99 and 1.101) and `cargo +nightly miri test` do, so the existing deep-dive-miri job already pins E0597.
+- Miri reports the BadCell exploit at get() as a validity error, "constructing invalid value of type &str: encountered a dangling reference (use-after-free)", not as a failed memory access.
+- Lint facts, checked on 1.96. Deny by default: invalid_reference_casting, clippy::uninit_vec, clippy::uninit_assumed_init, dangerous_implicit_autorefs (why the lab writes `&mut (&mut *p)[..mid]`) and invalid_from_utf8_unchecked (why the bytes go through black_box). Warn by default, so errors under -D warnings: invalid_value and clippy::transmute_int_to_bool. Every allow carries a reason.
+- The `let _ = *p` note is demonstrated both ways: a non-ignored test that Miri accepts after a free, and an ignored `let _ = unsafe { *p };` that reads, because a block is a value expression.
+- The uninit fold-in: ub_assume_init_uninit_integer and ub_set_len_then_assign_drops_garbage. The twin uses spare_capacity_mut + write + set_len, with a drop counter.
+- Data race vs race condition is answered in the module doc. ub_data_race is reported under 24/24 seeds. race_condition_without_ub loses an update deterministically, with atomics only, and Miri accepts it.
+- split_at_mut_panics_past_the_end pins the assert! that split_at_mut's soundness depends on. The "Run it" block gained `--doc` lines, because a name filter skips doctests in cargo 1.96.
+
+#### Lab: FFI with edition-2024 unsafe extern and safe fn, repr(C), CString ownership, closure trampolines (built)
 
 - Slug `ffi-lab` · placement: deep-dive-lab · module: `deep-dive/src/ffi_lab.rs` (libc symbols only, no crates) · interview value: **3/5**
 - Sharpest question: How do you pass a Rust closure to a C API that takes `void (*cb)(void*, int)` plus a `void* user` pointer, and what happens if the closure panics?
@@ -1169,7 +1187,21 @@ Theme: `unsafe`, Miri, FFI, allocators, loom, and testing a library from outside
   - Tests: `strlen(c"hello") == 5`; `abs` callable without `unsafe`; `div(7, 2) == (3, 1)`; `qsort` sorts; an interior NUL gives `Err` with `nul_position() == 1`; `to_string_lossy` shows the replacement char; the closure collects values; a panicking closure returns `Err`; the child process exits abnormally; `assert_sync::<Mutex<Handle>>()` compiles.
   - README: why `unsafe impl Sync` for the handle would be unsound. Lab convention: every unsafe op sits in its own `unsafe {}` block with a `// SAFETY:` comment.
 
-#### Lab: a counting GlobalAlloc to predict allocations, black_box micro-benchmarks, bounds-check elimination
+**As built** (see `deep-dive/src/ffi_lab.rs`; adversarially reviewed). Deviations and verified corrections:
+
+- Parts: `call_libc` (built); `cstring_ownership` (built); `callback_trampoline` (built); `send_c_handle` (built).
+- `safe fn abs` / `safe fn div` from the ROADMAP are not used as real bindings. A `safe fn` promises that no argument can cause UB, but ISO C's abs(INT_MIN), div(x, 0) and div(INT_MIN, -1) are UB. So they are declared `unsafe fn` behind the safe wrappers `checked_abs` / `checked_div`, and `hypot` is the honest `safe fn`: it takes no pointers, has no precondition, and std declares it `pub safe fn hypot` in library/std/src/sys/cmath.rs. The broken `safe fn abs` is kept as a labeled, never-called compile-pass doctest, which shows the compiler accepts the false promise. The ROADMAP test "abs callable without unsafe" became hypot_is_a_safe_fn, checked_abs_refuses_int_min and that doctest. On this aarch64 Mac the UB is silent: abs(INT_MIN) == INT_MIN and div(1, 0) == {0, 1}. The docs word this as platform-specific.
+- The learner modes ("stubs are unimplemented!()", "stub never calls the closure", "assert_send fails to compile until added") ship as the finished reference. A "Try it" section lists breakages to apply instead, each verified with the diagnostic or failing test it produces: delete the `unsafe` on the extern block, change abs to `safe fn`, remove `repr(C)`, empty the trampoline, drop its catch_unwind, run the abort child, skip ffi_lab_string_free, delete `unsafe impl Send`, add `unsafe impl Sync`.
+- The trampoline, CString-ownership and handle parts use a stand-in C library written in Rust: the private `fake_c`, exporting `#[unsafe(no_mangle)]` ffi_lab_* symbols. The lab imports it back by name through `unsafe extern "C"` bindings in `mod sys`. libc has no portable callback plus `void *user` API: qsort_r's argument order and callback signature differ between glibc and macOS (checked in the macOS SDK _stdlib.h, glibc's stdlib.h and the libc crate).
+- The !Send starting point is a compile_fail,E0277 doctest whose positive control adds only the `unsafe impl Send`. !Sync is compile_fail,E0277 on `assert_sync::<Handle>()`, with `assert_sync::<Mutex<Handle>>()` as its control. Two compile_fail doctests (a plain extern block, a bare #[no_mangle]) carry no error code, because those diagnostics have none.
+- Stable rustdoc ignores compile_fail error codes. Nightly rustdoc and `cargo +nightly miri test` enforce them (a deliberately wrong code fails with "Some expected error codes were not found"), so the existing deep-dive-miri CI job already enforces them and no new CI step is needed.
+- Miri shims strlen, hypot and calls to #[no_mangle] Rust functions, but not abs, div or qsort ("can't call foreign function `abs` on OS `linux`" / `macos`), and it cannot spawn processes. The four affected tests are cfg_attr(miri, ignore) with those reasons. Checked on the macOS host and, through Miri cross-interpretation, on x86_64-unknown-linux-gnu.
+- The panic-through-extern-"C" test uses a child process. The child test is #[ignore]d and also returns early unless FFI_LAB_ABORT_CHILD is set, so `cargo test -- --ignored` stays safe to run. The parent asserts that the filter matched, the exit is abnormal, the signal is SIGABRT (6, under cfg(unix)), and both messages, verified printed: "callback panicked at 2" and "panic in a function that cannot unwind". std aborts through libc::abort on unix, so Linux takes the same path.
+- Fold-ins beyond the ROADMAP: an `extern "C-unwind"` path with its own test, library-allocated strings freed by the library (LibString), a live-allocation counter proving exactly-once frees, compile-time layout asserts on DivT, and the note that a generic safe `qsort<T: Ord>` wrapper would be unsound. Also std's `#[cfg_attr(target_env = "msvc", link_name = "_hypot")]` on `hypot`, which is inert on Linux and macOS and type-checked only for Windows.
+- Corrections found while verifying. The opaque Ctx follows the current Rustonomicon recipe (`_data: ()` plus `PhantomData<(*mut u8, PhantomPinned)>`). The improper_ctypes message reads "`extern` block uses type `DivT`" from rustc and `ffi_lab::DivT` from clippy. div_t's field order (quot first) was checked against both platform headers. clippy's not_unsafe_ptr_arg_deref (deny by default) only checks public-API functions, so it does not police the private `fake_c`; there the unsafe-extern-fn rule is kept by hand.
+- The documented per-test commands use `cargo ... test --lib -- --ignored --exact ffi_lab::tests::<name>`, so cargo does not build the other labs' integration-test targets (tests/alloc_count.rs has harness = false). Every unsafe operation sits in its own `unsafe {}` block with a SAFETY comment, including the comparator's two reads and the context's read and write.
+
+#### Lab: a counting GlobalAlloc to predict allocations, black_box micro-benchmarks, bounds-check elimination (built)
 
 - Slug `alloc-perf-lab` · placement: deep-dive-lab · module: `deep-dive/tests/alloc_count.rs` (`harness = false`) plus `deep-dive/src/perf_lab.rs` · interview value: **3/5**
 - Sharpest question: How would you prove that a hot path makes zero allocations, and what makes a Rust micro-benchmark trustworthy (black_box, warm-up, confirming bounds-check elimination in asm)?
@@ -1184,7 +1216,18 @@ Theme: `unsafe`, Miri, FFI, allocators, loom, and testing a library from outside
   - criterion is an external crate: per the lab conventions it must be `cfg`-gated like loom, or live in a sibling crate excluded from the root workspace with its own CI job.
   - *(scope)* Keep trivia predictions (`Vec::new`, `Box::new(())`) a small minority of the lab.
 
-#### Lab: SeqCst vs Acquire/Release, Peterson's lock, false sharing, Treiber stack reclamation
+**As built** (see `deep-dive/tests/alloc_count.rs`, `deep-dive/src/perf_lab.rs`; adversarially reviewed). Deviations and verified corrections:
+
+- Parts: `alloc_count` (built); `bench_and_bce` (built).
+- Learner mode: the ROADMAP says 'predictions start at 999 and main exits non-zero'; the lab instead ships the finished reference with correct predictions. Try it 1 gives a perl command that resets exactly the 15 checked predictions to 999, and ALLOC_QUIZ=1 hides the measured counts on a FAIL. main still exits non-zero on any mismatch, so CI (debug, and Miri under both models) checks every prediction.
+- The ROADMAP exercise name `bench_and_bce` became the module `perf_lab`. criterion is not added. The module docs say what it adds (statistics, outlier detection, baselines) and how to wire it up: [dev-dependencies] plus a [[bench]] target with harness = false.
+- Thread-local authoring note applied. The counters are const-initialized `Cell` thread-locals without Drop (a Stats value plus a COUNTING gate), read through try_with and switched on only inside count(). This matches GlobalAlloc's Re-entrance guarantee for thread_local! and std's native TLS macro, where a const, !needs_drop key is a plain #[thread_local] static.
+- Exact counts only for structural cases: documented ones, or fixed by today's std, such as exact-size collect = 1 alloc and 0 reallocs. Growth is checked only as a bound: filter-collect expects 1 alloc and 1..=20 reallocs (7 observed), and render_naive checks 210 allocs and 210 frees with reallocs left open. The stable sort's scratch buffer, the in-place collect and both round-trip rows are printed as `seen` and never asserted. 19 cases, 15 checked; trivia is 2 of 19.
+- A correction to the premise in 65_performance/perf3 and the ROADMAP ('a bounds check per iteration'): for sum_indexed, LLVM hoists one `b.len() < a.len()` check in front of an unrolled loop, which x86_64 also vectorizes with SSE2. The per-iteration check is therefore shown with the data-dependent lookup_sum_indexed and removed with try_into to &[u32; 256]. Verified natively on aarch64-apple-darwin (rustc 1.96) and in x86_64-unknown-linux-gnu asm cross-emitted with RUSTC_BOOTSTRAP=1 -Zbuild-std. On aarch64, keeping only the length test while indexing the slice also removes the check.
+- Correction: whether a benchmark loop without black_box measures anything depends on codegen units. In the default 16-CGU release build, the naive `sum_zip` row matched the real one only because the caller saw a bare declaration. With -C codegen-units=1, LLVM folds the 2000 calls into one per batch (sum_zip is memory(argmem: read) nounwind), and the row reads 0 ns. `cargo rustc -- --emit asm` also builds a single codegen unit unless -C codegen-units is given. The lab documents both points, and its kernels were confirmed unchanged in the real 16-CGU binary with objdump.
+- Beyond the ROADMAP list, the lab adds interview-grade cases: `Vec<String>` clone = 1 + one per non-empty string, `Vec<Rc<str>>` clone = 1, filter into with_capacity, word count with entry(to_string()) (10/0/2) vs get_mut (8/0/0), and a zero-allocation Server::handle hot path proven both with a counting window and with the assert_no_alloc guard. Two rows show what the optimizer deletes: perf_lab::boxed_round_trip reads 1/0/1 in debug and 0/0/0 in release, while local_round_trip, the same code compiled inside the binary that defines the counting __rust_alloc, reads 1/0/1 in every build.
+
+#### Lab: SeqCst vs Acquire/Release, Peterson's lock, false sharing, Treiber stack reclamation (built)
 
 - Slug `lock-free-ordering-lab` · placement: deep-dive-lab · module: `deep-dive/src/ordering_lab.rs` plus `treiber.rs` (with `cfg(loom)` tests) · interview value: **3/5**
 - Sharpest question: Give the store-buffering example where both threads read 0 under Acquire/Release. Why does SeqCst forbid it, and why is memory reclamation the hard part of a lock-free stack?
@@ -1200,7 +1243,25 @@ Theme: `unsafe`, Miri, FFI, allocators, loom, and testing a library from outside
   - Receives: the store-buffering and IRIW litmus questions from `send-sync-ordering-quiz` (dropped from `quizzes/quiz5`; the IRIW question must name the load ordering and say whether it asks about hardware or language guarantees); the Treiber-stack ABA follow-up from `atomics-cas-aba`; and false sharing from the cut `layout-niche-padding`. Verified layout facts for the latter: `#[repr(align(128))] struct CachePadded<T>(T)` has align 128, `[CachePadded<AtomicU64>; 2]` is 256 bytes, and `(AtomicU64, AtomicU64)` is 16 bytes (explain why 128 on x86_64 / aarch64).
   - *(scope)* Cross-link `atomics-cas-aba`, `myarc` and `loom_lab` rather than repeating them.
 
-#### Lab: testing a library from outside: doctests, compile_fail guarantees, integration tests, proptest, semver
+**As built** (see `deep-dive/src/ordering_lab.rs`, `deep-dive/src/treiber.rs`; adversarially reviewed). Deviations and verified corrections:
+
+- Parts: `sb_litmus` (built); `peterson_and_padding` (built); `treiber` (built); `crossbeam-epoch variant` (dropped).
+- Learner modes became the finished reference plus Try-it sections. The ROADMAP's 'Fails: Miri reports UB for the eager free' is now an #[ignore]d test (eager_free_stale_commit_is_a_use_after_free) with the exact Miri command in its doc comment. The Release/Acquire outcomes are loom #[should_panic] models or are printed by #[ignore]d stress runs; no test asserts that a weak outcome shows up.
+- Corrected 'SeqCst/fence version exact under loom'. loom 0.7.2 models SeqCst accesses as AcqRel: its README says so under 'Unsupported features', and thread::Set::seq_cst is an empty function. It gave false alarms on SB, Peterson and IRIW with SeqCst accesses (all three reproduced). Only the fence(SeqCst) variants are loom-verified. The SeqCst-accesses Peterson lock and SB/IRIW are asserted on real threads instead. One false alarm is kept as the #[should_panic] test sb_seqcst_accesses_are_a_loom_false_alarm. loom 0.7.2 is still the newest release, and deep-dive/Cargo.lock is gitignored, so CI resolves the newest 0.7.x.
+- The fenced Peterson lock needs a fence(SeqCst) after EACH of the two stores. loom flags the tempting single fence after both stores, and that version really is not guaranteed by the C++20 model (fence rule 4.4). In the loom model thread 1 takes the lock twice (3 acquisitions, exhaustive, about 2.4 s in debug). With one acquisition each, loom misses a Relaxed turn load (verified), and the Try-it section says so.
+- Added the IRIW question the Receives note asked for. It names the load ordering and separates the language answer (allowed with Acquire loads, forbidden once the four loads are SeqCst or fenced) from the hardware answer (x86_64 never; ARMv8 never with Acquire loads, can with Relaxed). It comes with a real-thread iriw() harness, an asserted SeqCst test, and loom models bounded to 2 preemptions in CI. Unbounded hand runs took 129 s to find the Acquire counterexample and 491 s to pass the fenced model (debug).
+- The M4 Pro result depends on the build target, not just the CPU. rustc 1.96 compiles an Acquire load to ldapr on aarch64-apple-darwin, so Release/Acquire SB is observable there, intermittently and in bursts: 0 in four 10M-round runs, yet 131 of 500 debug and 171 of 500 release 2,000-round runs failed in the same sitting. On aarch64-unknown-linux-gnu an Acquire load is ldar. x86_64 uses mov for loads and Release stores, xchg for a SeqCst store and `lock orl $0,-64(%rsp)` for fence(SeqCst). All assembly was checked with --emit asm; the x86 hardware behavior is the documented TSO model, not a run.
+- False-sharing layout facts are asserted in tests::cache_padded_layout_facts. Measured on the M4 Pro: adjacent 130-205 ms vs 32-35 ms padded (4-6x). 64-byte separation was as fast as 128 (about 32 ms; an earlier run saw 40-44 ms), even though hw.cachelinesize reports 128. The docs present 128 as crossbeam's conservative choice, not a measured necessity here.
+- Treiber: Node::next is an AtomicPtr accessed Relaxed, so loom can track it. Weakening push's Release or pop_begin's Acquire makes loom panic with 'Causality violation: Concurrent load and mut accesses.' (verified). pop_commit's Acquire turned out to be unnecessary (loom passes with Relaxed); it is kept to match atomics5 and documented as optional. The retired list uses Relaxed because it is only walked with &mut self.
+- The eager-free variant is an `unsafe fn new_eager_free()`. Its contract: while a PopTicket of the stack is alive, no other pop may run. The #[ignore]d test breaks the contract deliberately, so the safe API stays sound. A PopTicket borrows its stack, and committing it on another stack panics.
+- The Send/Sync impls are explicit (T: Send for both) because the auto impls would be unsound: with them, `TreiberStack<MutexGuard<'static, u8>>` becomes Sync (verified). A compile_fail,E0277 doctest plus a positive control covers this. Stable rustdoc ignores the error code; nightly rustdoc, and therefore the existing deep-dive-miri job, enforces it (a deliberately wrong E0308 failed under `cargo +nightly miri test --doc`). No new CI step is needed.
+- atomics3's spinlock is loom-modeled in treiber.rs as SpinLock with configurable orderings. Both halves are needed: (Acquire, Relaxed) and (Relaxed, Release) each lose an update under loom (verified). SpinLock::relaxed is the kept #[should_panic] model.
+- The crossbeam-epoch variant was dropped (it would be an external dependency). Epoch-based reclamation and hazard pointers are explained in the docs instead.
+- Real-thread harnesses use thread::Builder::spawn_scoped because the repo-root clippy.toml disallows std::thread::Scope::spawn (clippy finds that file by searching parent directories). Loom tests live in #[cfg(all(test, loom))] mod loom_tests rather than the plain #[cfg(loom)] first planned, because a plain cfg(loom) leaves unused helpers in the non-test loom build. Tests that must not run under loom are gated #[cfg(all(test, not(loom)))], and peterson_count is #[cfg(not(loom))].
+- only Peterson's spin-wait switches to loom's yield under --cfg loom. The real-thread harnesses always use std's backoff, so they no longer panic when called in a loom-cfg build.
+- store_buffering() and iriw() check their orderings before spawning any thread. Before this, iriw() hung forever on an invalid ordering because std's panic killed only some of the four lock-stepped threads. Two new should_panic tests cover this, so the lab now has 22 non-loom tests plus 5 ignored.
+
+#### Lab: testing a library from outside: doctests, compile_fail guarantees, integration tests, proptest, semver (built)
 
 - Slug `api-surface-lab` · placement: deep-dive-lab · module: `deep-dive/src/api_surface.rs` plus `deep-dive/tests/api_surface.rs` (and a proptest dev-dependency) · interview value: **3/5**
 - Sharpest question: How do you test that misuse of your API fails to compile, and which of these changes are semver-major: adding a variant to a non-`#[non_exhaustive]` enum, adding a method to a sealed vs an unsealed trait?
@@ -1215,11 +1276,27 @@ Theme: `unsafe`, Miri, FFI, allocators, loom, and testing a library from outside
   - proptest is an ungated external crate: per the lab conventions it must be `cfg`-gated like loom, or live in a sibling crate in the root `[workspace] exclude` list with its own CI job. Decide before adding the dev-dependency.
   - Receives the negative (must-not-compile) checks from `builder-typestate` and `variance-phantomdata`, and the compile-fail Send/Sync cases suggested for `send-sync-ordering-quiz`.
 
+**As built** (see `deep-dive/src/api_surface.rs`, `deep-dive/tests/api_surface.rs`; adversarially reviewed). Deviations and verified corrections:
+
+- Parts: `compile_fail_guarantees` (built); `integration_and_proptest` (built); `semver_drill` (built).
+- proptest is gated like loom: `[target.'cfg(proptest)'.dev-dependencies] proptest = { version = "1", default-features = false, features = ["std"] }` resolves to 1.11.0 plus 14 packages (macOS, autocfg included), with no rusty-fork, tempfile or bit-set. 'cfg(proptest)' is added to check-cfg, and the `props` module and `common::strategies` are #[cfg(proptest)]. The proposed CI step's grep guard fails when the cfg is missing (checked).
+- Learner modes became a finished reference plus 'Try it' bullets. For compile_fail_guarantees, 'removing a guarantee turns its doctest red' is a Try-it bullet (verified for Status, Format and send()). For integration_and_proptest, the planted bugs always exist in `api_surface::planted`, deterministic tests assert the shrunk counterexamples, and #[ignore]d `watch_*` tests show proptest's own report.
+- semver_drill is a table in the module docs (Part 3), not a README table as the ROADMAP says. Each row links to the item that carries the doctest.
+- Confirmed the ROADMAP note on error codes. Stable 1.96 rustdoc ignores them (`compile_fail,E0999` passes); nightly 1.99 rustdoc, `cargo +nightly miri test` and stable with RUSTC_BOOTSTRAP=1 enforce them. So the existing deep-dive-miri job already checks codes; the separate nightly --doc step is optional, for a faster and clearer failure.
+- Correction to the usual 'sealed traits can grow freely' rule, in two parts. A defaulted method on a sealed trait can still cause E0034 downstream when a downstream trait implemented for the same upstream type has a method of that name. And, sealed or not, a new item that costs a trait its dyn compatibility (a generic method without `where Self: Sized`, an associated const) is major, because every downstream `dyn Trait` fails with E0038. The table, the paragraph after it and the Sharpest answer now say so (all verified with rustc probes).
+- cargo-semver-checks 0.50.0 does not flag a tightened generic bound on a function (`insert_sorted<T: Ord + Clone>` reports 'no semver update required'), although it is major. The docs name this gap; the doctest on insert_sorted catches it (E0277).
+- Toolchain fact: a positional filter (`cargo test NAME`) skips doctests on cargo 1.96 and nightly 1.99, including `cargo miri test NAME`. 'Run it' therefore uses `--lib api_surface` and `--doc api_surface`.
+- The lab carries the negative checks other modules promise it: 47_type_level typestate (E0599 twice) and #[must_use]; 38_variance, as E0597 through the invariant `Recorder` plus a doctest-local `RowId` pair showing that a `PhantomData<T>` marker inherits `Rc`'s `!Send` (E0277) while `PhantomData<fn() -> T>` does not, which replaces variance1's run-time Probe as the ROADMAP variance note asks; the quizzes/quiz5 Send/Sync compile_fail cases; 45_sized_deref/deref1 (`make_ascii_uppercase` gives E0596); 48_macros_deep/macros6 (`max_of!()`, no error code).
+- rustdoc prepends #![allow(unused)] to every doctest, so the #[must_use] pair has to `#![deny(unused_must_use)]` itself, and for the two code-less compile_fail doctests the positive control is the only evidence. In edition 2024, passing examples are merged into one bundle crate, one module each (a #![deny] becomes a module inner attribute); compile_fail examples are compiled standalone. Seen with --persist-doctests.
+- The shrinking demonstrations are deterministic because demo_config pins the RNG algorithm (ChaCha), the seed, the case count (256) and the shrink limits (max_shrink_iters u32::MAX, max_shrink_time 0). Review added the algorithm and shrink pins: before that, PROPTEST_MAX_SHRINK_ITERS=3 made both demonstrations fail. A Try-it note says that widening the record strategy to 0..8 changes the escaping demonstration's minimum to `[]`: shrinking minimizes the input, not the bug.
+- E0412 is no longer emitted: 'cannot find type' is E0425 on 1.96 and 1.99. The docs cite this as a reason pinned codes can drift.
+- The title differs from the ROADMAP heading so that it fits in 80 columns: 'testing a library from outside: `compile_fail`, proptest, semver'.
+
 ### New crates with external dependencies
 
 Theme: the ecosystem answers (tokio, axum, tower, serde, Cargo features) that single-file std-only exercises cannot express.
 
-#### Lab (tokio, axum, tower): select cancel safety, graceful shutdown, 503 backpressure, spawn_blocking
+#### Lab (tokio, axum, tower): select cancel safety, graceful shutdown, 503 backpressure, spawn_blocking (built)
 
 - Slug `backend-tokio-lab` · placement: deep-dive-lab · module: new sibling crate `backend-lab/` (tokio, tokio-util, axum, tower), excluded from the root workspace · interview value: **5/5**
 - Sharpest question: Implement graceful shutdown for a tokio server: stop accepting, drain in-flight requests with a timeout, then abort. Which tokio APIs you use in select! are cancel-safe?
@@ -1235,7 +1312,22 @@ Theme: the ecosystem answers (tokio, axum, tower, serde, Cargo features) that si
   - Tests: frames intact across 100 timeouts; jobs started before the token complete, later ones are rejected, a long job is aborted; with `n + 1` requests a 503 appears and queue depth stays at most `n`; the heartbeat counter is above 0 once the work moves to `spawn_blocking`.
   - *(scope)* The relevance review scores this 5/5 and recommends raising it to P0 among the labs, and adding bounded concurrency ("at most K in flight" with `Semaphore` / `JoinSet` / `buffer_unordered`; see [Additional topics](#additional-topics-not-yet-verified)).
 
-#### Lab: serde at the boundary and additive Cargo features
+**As built** (see `backend-lab/`; adversarially reviewed). Deviations and verified corrections:
+
+- Parts: `select_cancel` (built); `graceful_shutdown` (built); `backpressure_http` (built); `blocking_in_async` (built); `bounded_fanout` (built).
+- Learner mode: the ROADMAP's 'Fails: ...' lines became a finished reference. Nine deterministic `broken_*` tests assert that each bug happens (plus `happy_path_test_hides_the_bug`), and the README 'Try it' section lists 10 experiments. Each was verified in a throwaway copy, with its failing test and output quoted.
+- select_cancel: 'frames intact across 100 timeouts' is implemented as 100 heartbeat `Interval` ticks, each landing mid-frame. Segments arrive on even and ticks on odd virtual milliseconds. It ships two fixes: a `read_exact` pinned outside an inner loop, and a cancel-safe `FrameReader` that keeps `buf` and `filled` in itself, as tokio-util's `FramedRead` keeps its buffer in the stream.
+- graceful_shutdown: an `mpsc` queue stands in for `TcpListener::accept`. Both are cancel safe in tokio 1.53.1, and the substitution makes the paused-time assertions exact (shutdown takes exactly the 5 s grace). There are three broken variants: abort at once, no `Receiver::close`, and drain with no deadline.
+- graceful_shutdown: after `Receiver::close`, the server now calls `recv` until `None` instead of `try_recv` until empty. tokio's `Receiver::close` docs say outstanding `Permit`s can still send, so the old sweep lost those jobs. The wait shares the grace deadline with the drain, `broken::serve_abort_immediately` bounds it too, and a new demonstration test and Try-it 4 cover it.
+- axum: `serve_http` and two real-socket tests show that `with_graceful_shutdown` stops accepting but has no deadline and cannot abort. axum 0.8.9 spawns a task per connection and keeps no `JoinHandle` for it (it only counts the tasks through `watch::Receiver` clones).
+- backpressure_http goes beyond the ROADMAP: `Retry-After: 1` on `Full`, a separate 503 'shutting down' on `Closed`, and the tower middleware version (`HandleErrorLayer` + `load_shed` + `GlobalConcurrencyLimitLayer`). `broken::shed_load_per_route` shows the pitfall: `Router::layer` applies a layer to each method of each route, and `ConcurrencyLimitLayer::layer` creates a new `Semaphore` each time.
+- blocking_in_async: the ROADMAP's 'bounded 2 s wait' is a 200 ms watchdog for the broken variant, and a 5 s watchdog bounds only the fixes. The tests use real time because tokio stops auto-advancing paused time while a `spawn_blocking` task runs. Also added: a `yield_now` fix, a `timeout(50 ms)` that returns `Ok` after 200 ms of blocking code, and a `block_in_place` should_panic test on current_thread. `rt-multi-thread` is now only a dev-dependency feature.
+- bounded_fanout is the (scope) fold-in. It covers `Semaphore` + `acquire_owned`, a `JoinSet` sliding window, `futures::StreamExt::buffered` / `buffer_unordered`, ordered vs unordered results, stopping at the first error, and `shutdown().await` vs dropping a `JoinSet`. futures 0.3.34 (default features off, `std`) was added deliberately. every bounded version panics on k == 0; before, the semaphore and stream versions hung.
+- semaphore_stops_at_the_first_error_and_aborts_the_waiters asserts that `started` is in 3..=4, not an exact value. It was 4 in every run: the failing task's permit passes to the next FIFO waiter before the joiner sees the error, and that interleaving is a tokio scheduling detail.
+- README: the cancel-safety table was checked row by row against the docs of tokio 1.53.1 and tokio-util 0.7.19. It adds follow-up answers from the candidate's interview_questions: tokio vs std `Mutex`, and how tower middleware works.
+- Confirmed ROADMAP notes: tokio's `select!` docs list `read_exact` as not cancel safe. `start_paused` needs tokio `test-util` (E0599 without it). The crate needs the root `[workspace] exclude` entry: cargo fails without it. The repo-root `clippy.toml` also applies to backend-lab, because clippy reads parent directories (verified with a probe crate).
+
+#### Lab: serde at the boundary and additive Cargo features (built as `config-lab/`)
 
 - Slug `serde-features-lab` · placement: deep-dive-lab · module: new crate `deep-dive/config_lab` · interview value: **3/5**
 - Sharpest question: How do you guarantee that a deserialized `Email` field is always valid, and why must Cargo features be additive?
@@ -1247,6 +1339,19 @@ Theme: the ecosystem answers (tokio, axum, tower, serde, Cargo features) that si
   - Correct placement: external dependencies and feature flags can't be declared by single-file graded exercises.
   - Crate layout: per the lab conventions, a crate with ungated external dependencies goes in the root `[workspace] exclude` list with its own CI job. If it instead becomes a member of a deep-dive workspace, the deep-dive CI job must pass `--workspace` to fmt, clippy and test (it currently targets only the root package via `--manifest-path`), as the verifier noted for the proc-macro lab.
   - Tests: an invalid email gives the expected message, an unknown key is rejected, defaults apply, round trips hold; both feature sets build and pass with no `unexpected_cfgs`.
+
+**As built** (see `config-lab/`; adversarially reviewed). Deviations and verified corrections:
+
+- Parts: `serde_boundary` (built); `features_and_cfg` (built).
+- Location: a sibling crate at config-lab/ (package config-lab), next to backend-lab/, instead of the ROADMAP's `deep-dive/config_lab`. It needs "config-lab" in the root [workspace] exclude list; without it, `cargo ... --manifest-path config-lab/Cargo.toml` fails with "current package believes it's in a workspace when it's not" (verified on a `git archive HEAD` copy of the repo). It also has its own CI job.
+- Shipped as a finished reference, not a learner exercise. The ROADMAP's two failure modes became Try-it steps. (1) Removing deny_unknown_fields fails the two typo tests, either through the `lenient` feature (`cargo test --features lenient -- --ignored`) or by deleting the cfg_attr blocks by hand. (2) An ungated serde derive breaks only `cargo build --no-default-features` (E0433), which the CI feature matrix catches.
+- Added a deliberately non-additive `lenient = ["serde"]` feature. It drops deny_unknown_fields through `cfg_attr(all(feature = "serde", not(feature = "lenient")), ...)` and demonstrates the "why must features be additive" half of the sharpest question with deterministic tests: the two typo tests are ignored under lenient, and lenient_feature_silently_accepts_the_typos runs under --all-features. Verified with temp crates: a crate with default-features = false still sees serde when another crate uses the defaults. A lenient request that comes only through a dev-dependency applies to cargo test and examples, not to cargo run. Build dependencies do not share features with normal ones: with lenient requested only there, build.rs sees it and the program still rejects typos.
+- build.rs probes `$RUSTC --version` (the same code as serde 1.0.229's build.rs) and sets config_lab_has_floor_char_boundary on Rust 1.91+, where str::floor_char_boundary is stable. CONFIG_LAB_FORCE_FALLBACK=1 forces the fallback, and rerun-if-env-changed makes Cargo rerun the script (`cargo build -v` prints "the env variable CONFIG_LAB_FORCE_FALLBACK changed"). Verified: without that line the cfg goes stale. With no rerun-if lines at all, touching README.md reruns the script; with the delivered lines it stays Fresh.
+- Verified correction: clippy::incompatible_msrv is warn by default and flags str::floor_char_boundary against rust-version 1.85 even behind the cfg. `#[clippy::msrv = "1.91"]` on the gated function is the fix (Try it 7). rust-version = "1.85" is what edition 2024, toml 1.1.6 (and its toml_* crates) and proptest 1.11 require. `cargo +1.85 test` passes on the fallback path (13 unit tests: fallback_agrees_with_std needs 1.91+), and the CI job has an MSRV step.
+- Verified correction on error codes: the private-constructor compile_fail doctest through the re-export `config_lab::Email(..)` is E0423 "cannot initialize a tuple struct which contains private fields". E0603 "tuple struct constructor `Email` is private" appears only through the path `config_lab::serde_boundary::Email`. Stable rustdoc ignores the code (E0603 passes on stable), while nightly enforces it. A positive-control doctest is paired with it, so no nightly CI step is needed.
+- Verified serde/toml facts, stated in the README. `into = "String"` makes serde clone the value first, so the type must be Clone (serde_derive's serialize_into calls Clone::clone, and serde.rs says so). try_from maps the error with de::Error::custom, and toml 1.1.6 stores only msg.to_string(), so EmailError's kind() is lost. An invalid element of alert-emails gets a span covering the whole array. serde.rs calls deny_unknown_fields + flatten unsupported; on serde 1.0.229 it still rejects unknown keys on the outer struct (the message no longer lists the expected keys) and silently does nothing on a flattened struct. `dep:` removes the implicit feature: `--features toml` fails with "does not have feature `toml`".
+- Proptest is an ordinary dev-dependency with default-features = false and features = ["std"]. All property tests set failure_persistence: None, so they never write proptest-regressions/ (verified after passing and failing runs). They use a fixed seed (RngSeed::Fixed(0x5EED)) unless PROPTEST_RNG_SEED is set, so CI is deterministic and failures reproduce. On failure, proptest 1.11 prints the minimal failing input, not the seed.
+- The TOML integration test target has required-features = ["serde"], so `cargo test --no-default-features` skips it silently (verified). The email property tests, the unit tests and the doctests still run without serde.
 
 ## Additional topics (not yet verified)
 
@@ -1270,7 +1375,7 @@ Theme: the ecosystem answers (tokio, axum, tower, serde, Cargo features) that si
 - **Async recursion and pin projection** — E0733 "recursion in an async fn requires boxing" fixed with `Box::pin`, and writing a `Timeout<F>` / `Join` combinator over `!Unpin` child futures (structural pinning, pin-project-lite).
   - Placement: graded, extend `29_async_runtime` (`runtime5`: async recursion via `Box::pin`; `runtime6`: a safe `Timeout<F>` storing `Pin<Box<F>>`). Deep-dive lab: structural pinning with unsafe `map_unchecked_mut` vs pin-project-lite.
   - Why: "What is pin-project for?" and "how do you implement a future that wraps another future?" are standard senior async questions. `join1` and `select1` deliberately restrict children to `Unpin`, so the course never faces projection. The reviewer checked that E0733 is a real error on 1.96.
-- **Bounded concurrency and streams in async** — "process 10k items with at most K in flight" using `Semaphore`, `JoinSet`, or `Stream` + `buffer_unordered`; the `Stream` (`poll_next`) trait; ordered vs unordered results; short-circuiting on the first error.
+- **Bounded concurrency and streams in async** *(built as `backend-lab/src/bounded_fanout.rs`; the optional graded std version is not built)* — "process 10k items with at most K in flight" using `Semaphore`, `JoinSet`, or `Stream` + `buffer_unordered`; the `Stream` (`poll_next`) trait; ordered vs unordered results; short-circuiting on the first error.
   - Placement: deep-dive lab, a `bounded_fanout` part in `backend-tokio-lab` (tokio `Semaphore` / `JoinSet` / `futures::StreamExt::buffer_unordered`). Optional graded std version: a `Stream` trait plus a `buffer_unordered`-style combinator on the course's executor.
   - Why: "fetch N URLs with at most 50 concurrent requests" is one of the most common tokio interview prompts, and neither the std-only async modules nor `backend-tokio-lab` (select, shutdown, backpressure, `spawn_blocking`) cover limiting concurrency or streams.
 - **Designing a concurrent cache or map** — lock striping (`Vec<RwLock<HashMap<..>>>` chosen by hash), read-mostly hot-swapped config (`RwLock<Arc<Config>>` clone-out, the arc-swap idea), and `Arc::make_mut` copy-on-write.
@@ -1369,6 +1474,11 @@ rustfmt --check --edition 2024 exercise.rs solution.rs
 - Every unsafe op in its own `unsafe {}` block with a `// SAFETY:` comment, including inside `unsafe fn` (edition 2024).
 - Keep `cargo clippy --all-targets -D warnings` clean; test with a `#[cfg(test)] mod tests` block that doubles as a usage example, using drop-counter payloads to prove each value is dropped exactly once; aim to stay Miri-clean.
 - Optional external deps are `cfg`-gated (like `[target.'cfg(loom)'.dependencies]`) with a matching `unexpected_cfgs` check-cfg and CI step. Ungated external crates or proc macros need a sibling crate in the root `Cargo.toml` `[workspace] exclude` list with its own CI job.
+- Tests Miri cannot run (foreign functions it does not shim, process spawning, real-time benchmarks, proptest) get `#[cfg_attr(miri, ignore = "reason")]`; CI runs every other test and doctest under Stacked Borrows and Tree Borrows with strict provenance. Keep a lab's Miri run short (shrink iteration counts under `cfg(miri)`).
+- The repo-root `clippy.toml` applies to every lab crate too (clippy searches parent directories): use `thread::Builder::new().spawn(..)` / `.spawn_scoped(s, ..)`, never `thread::spawn` or `Scope::spawn`. Verify inside the repo tree, or copy that file into the scratch copy.
+- `cargo test NAME` (a positional filter) skips doctests on cargo 1.96; document `--lib NAME` and `--doc NAME` commands, and `--lib -- --ignored --exact <module>::tests::<name>` for single `#[ignore]`d demonstrations.
+- Stable rustdoc ignores `compile_fail` error codes; nightly rustdoc (and so the `deep-dive-miri` job) enforces them. Pair every `compile_fail` doctest with a positive control anyway.
+- A sibling lab crate commits its `Cargo.lock` (un-ignored in the root `.gitignore`), so CI tests the versions the lab was checked against; `deep-dive/Cargo.lock` stays untracked. Register the lab in `deep-dive/COURSE.md`, the root `README.md` and `deep-dive/README.md`.
 
 ## Sources
 

@@ -94,9 +94,10 @@ the docs). Growth is only ever checked against a bound.
 - **Sizing:** compare `capacity()` with a bound that growth by doubling
   cannot meet, instead of an exact number the docs do not promise.
 - **Counting allocations** needs a custom `#[global_allocator]`, which means
-  `unsafe impl GlobalAlloc`. That is the planned `alloc-perf-lab` deep-dive
-  lab (ROADMAP), together with `black_box` micro-benchmarks and checking the
-  assembly for bounds checks.
+  `unsafe impl GlobalAlloc`. That is the deep-dive lab
+  `deep-dive/tests/alloc_count.rs`; its partner `deep-dive/src/perf_lab.rs`
+  covers `black_box` micro-benchmarks and checking the assembly for bounds
+  checks.
 
 ## Exercise Path
 
@@ -135,9 +136,10 @@ the docs). Growth is only ever checked against a bound.
   source.
 - `67_code_review/review2` — `ptr_arg` and `needless_range_loop` as Clippy
   lints in a review, with the reasons behind them.
-- Planned deep-dive lab `alloc-perf-lab` (ROADMAP) — a counting global
-  allocator to prove a hot path makes zero allocations, `black_box`
-  micro-benchmarks, and bounds-check elimination confirmed in the assembly.
+- Deep-dive labs `deep-dive/tests/alloc_count.rs` and
+  `deep-dive/src/perf_lab.rs` — a counting global allocator that proves a hot
+  path makes zero allocations, `black_box` micro-benchmarks, and bounds-check
+  elimination confirmed in the assembly.
 
 ## Further Reading
 

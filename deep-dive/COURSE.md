@@ -11,8 +11,11 @@
 >   "fails while unsolved (compile/test error)"; each solution "passes + clippy
 >   `-D warnings` + rustfmt").
 > - The parts that **require `unsafe`** (raw-pointer linked list, handwritten
->   `RawWaker`, self-referential structs) live in a separate
+>   `RawWaker`, self-referential structs, the UB zoo, FFI) live in a separate
 >   `deep-dive/` crate, as a "read + tinker + run tests" lab.
+> - The labs that need **crates.io crates** live in two more crates, each its
+>   own workspace with its own CI job: `backend-lab/` (tokio, axum, tower) and
+>   `config-lab/` (serde, toml, proptest, Cargo features).
 > - Everything is in **English**: code comments, hints (the `h` key), and READMEs.
 
 ## How to run it
@@ -31,6 +34,14 @@ cargo run -- run futures3
 
 # The unsafe deep-dive labs (separate crate):
 cargo test --manifest-path deep-dive/Cargo.toml
+
+# The tokio / axum / tower backend lab (separate crate with external dependencies):
+cargo test --manifest-path backend-lab/Cargo.toml
+
+# The serde / Cargo features lab (separate crate with external dependencies);
+# its lesson is feature sets, so also run it without the default features:
+cargo test --manifest-path config-lab/Cargo.toml
+cargo test --manifest-path config-lab/Cargo.toml --no-default-features
 ```
 
 > ⚠️ Use the debug build (plain `cargo run`); **do not add `--release`** — the release
@@ -48,17 +59,18 @@ cd rustlings && rustlings         # start
 ```
 
 > ⚠️ What the binary embeds is the **graded exercises** and their module `README.md`s
-> (plus the workspace scaffolding), so the `deep-dive/` labs and this `COURSE.md` are
-> **not** part of the workspace `rustlings init` generates. (The `solutions/` files it writes start out
+> (plus the workspace scaffolding), so the lab crates (`deep-dive/`, `backend-lab/`,
+> `config-lab/`) and this `COURSE.md` are **not** part of the workspace `rustlings init` generates. (The `solutions/` files it writes start out
 > as placeholders and are filled in as you finish each exercise.) Keep a clone of
 > this repo around and run the labs from there:
-> `cargo test --manifest-path deep-dive/Cargo.toml`.
+> `cargo test --manifest-path deep-dive/Cargo.toml` (likewise for `backend-lab/` and `config-lab/`).
 >
 > Restore the official version with `cargo install rustlings`.
 >
 > Maintainer check of the whole course: `cargo dev check` (compiles and tests every
-> exercise and solution) plus `cargo test --manifest-path deep-dive/Cargo.toml` for the
-> labs.
+> exercise and solution) plus `cargo test --manifest-path <lab>/Cargo.toml` for each of the
+> three lab crates (`deep-dive`, `backend-lab`, `config-lab`); `.github/workflows/rust.yml`
+> lists the extra lab checks (Miri, loom, proptest, feature sets).
 >
 > `cargo dev check` starts every exercise at once. With 200+ exercises that can exceed
 > macOS's per-user process limit (`kern.maxprocperuid`), and the check stops with
@@ -79,6 +91,7 @@ cd rustlings && rustlings         # start
 | `39_drop_raii`           | `drop1..2`, `raii1..4` | Drop-order quizzes (locals, fields, params, `let _`, temporaries); `defer` guard, rollback-on-drop, dropck (E0597), `Rc` leak                                                                                                         |
 | `40_interior_mutability` | `cell1..4`             | `Cell` get/set vs `replace`/`take` (E0594/E0599); `OnceCell` memos; `OnceLock`/`LazyLock` statics (E0277/E0015); `thread_local!`                                                                                                      |
 | `41_memory_layout`       | `layout1..2`           | Interview quiz: `size_of` of fat pointers, niches, closures, enum tags, `repr(C)` / packed padding; reorder a `repr(C)` header                                                                                                        |
+| `deep-dive/`             | `ub_zoo`               | UB under Miri: aliasing (SB vs TB), invalid values, use-after-free, data race vs race condition, library UB, covariant `BadCell`                                                                                                      |
 
 ### Traits & Abstraction · the trait-system prerequisites (before async & concurrency)
 
@@ -101,6 +114,9 @@ cd rustlings && rustlings         # start
 | `49_panics`          | `panic1..3`                                 | `catch_unwind` + `AssertUnwindSafe` (E0277), payload downcasts; poisoned `Mutex` recovery, `clear_poison`; strong panic safety                                                                                                                                    |
 | `50_testing_seams`   | `seams1..3`                                 | Trait seams for dependencies; `RefCell`/`Cell` mocks behind `&self`; `Send + Sync` fake clocks: token-bucket limiter, TTL cache                                                                                                                                   |
 | `deep-dive/`         | `vtable_lab`                                | The `&dyn Trait` fat pointer built by hand — a data pointer + a static table of function pointers                                                                                                                                                                 |
+| `deep-dive/`         | `api_surface`                               | From outside the crate: `compile_fail` doctests with positive controls, `#[non_exhaustive]`, sealing, proptest shrinking, semver                                                                                                                                  |
+| `config-lab/`        | `serde_boundary`                            | `Email` newtype via `try_from = "String"`, `deny_unknown_fields` typo rejection, `rename_all`, defaults, proptest TOML round trip                                                                                                                                 |
+| `config-lab/`        | `features_and_cfg`                          | Feature unification vs a non-additive `lenient`, `dep:` + `cfg_attr` gating, `build.rs` `rustc-check-cfg`, `rerun-if-env-changed`                                                                                                                                 |
 
 ### Module 2 · Data structures: reading and hand-writing
 
@@ -130,59 +146,68 @@ cd rustlings && rustlings         # start
 
 ### Module 3 · Async model, fully dissected — hand-written async runtime (the focus)
 
-| Directory / crate      | Exercise           | Focus                                                                                                                       |
-|------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| `28_futures`           | `futures1..2`      | The `Future`/`Poll` trait; `Poll::Pending` and using the `Waker` to ask to be re-polled                                     |
-| `28_futures`           | `futures3`         | **Hand-written state machine**: exactly what an `async fn` desugars to                                                      |
-| `28_futures`           | `futures4`         | `async`/`await` sugar == the state machine                                                                                  |
-| `29_async_runtime`     | `runtime1`         | Building a `Waker` safely with `std::task::Wake`                                                                            |
-| `29_async_runtime`     | `runtime2`         | The executor core: the `block_on` poll loop (park/unpark)                                                                   |
-| `29_async_runtime`     | `runtime3`         | **Multi-task executor**: a ready-queue + a self-rescheduling `Waker` (the skeleton of tokio's current-thread runtime)       |
-| `29_async_runtime`     | `runtime4`         | Why `Pin` exists, and how to safely satisfy `poll`'s `Pin<&mut Self>`                                                       |
-| `57_async_combinators` | `join1`            | Hand-written `Join` of `Unpin` children: poll both every poll, keep outputs, never re-poll; `max(n_a, n_b) + 1` polls       |
-| `57_async_combinators` | `select1`          | Hand-written `Select` returning `Either`: biased poll order; dropping the loser on the deciding poll is what cancels it     |
-| `57_async_combinators` | `cancel1`          | Cancel safety: a `select` heartbeat drops a half-read line; keep progress in the reader, or pin one future outside the loop |
-| `58_leaf_futures`      | `oneshot1`         | Oneshot channel leaf: store the latest waker under the value's lock, `Err(Canceled)` when the sender drops, no lost wakeups |
-| `58_leaf_futures`      | `timer1`           | Non-blocking `Sleep`: register once with a timer thread and keep the latest waker; why `thread::sleep` in async is a bug    |
-| `58_leaf_futures`      | `yield1`           | Cooperative yielding: why `async fn yield_now() {}` never yields; a `YieldNow` leaf and a CPU loop that yields per batch    |
-| `deep-dive/`           | `raw_waker`        | Hand-written `RawWaker` + `RawWakerVTable` (four function pointers) — the real `Waker`                                      |
-| `deep-dive/`           | `self_referential` | Self-referential struct + `Pin`/`PhantomPinned` — what `Pin` is really protecting                                           |
+| Directory / crate      | Exercise            | Focus                                                                                                                              |
+|------------------------|---------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `28_futures`           | `futures1..2`       | The `Future`/`Poll` trait; `Poll::Pending` and using the `Waker` to ask to be re-polled                                            |
+| `28_futures`           | `futures3`          | **Hand-written state machine**: exactly what an `async fn` desugars to                                                             |
+| `28_futures`           | `futures4`          | `async`/`await` sugar == the state machine                                                                                         |
+| `29_async_runtime`     | `runtime1`          | Building a `Waker` safely with `std::task::Wake`                                                                                   |
+| `29_async_runtime`     | `runtime2`          | The executor core: the `block_on` poll loop (park/unpark)                                                                          |
+| `29_async_runtime`     | `runtime3`          | **Multi-task executor**: a ready-queue + a self-rescheduling `Waker` (the skeleton of tokio's current-thread runtime)              |
+| `29_async_runtime`     | `runtime4`          | Why `Pin` exists, and how to safely satisfy `poll`'s `Pin<&mut Self>`                                                              |
+| `57_async_combinators` | `join1`             | Hand-written `Join` of `Unpin` children: poll both every poll, keep outputs, never re-poll; `max(n_a, n_b) + 1` polls              |
+| `57_async_combinators` | `select1`           | Hand-written `Select` returning `Either`: biased poll order; dropping the loser on the deciding poll is what cancels it            |
+| `57_async_combinators` | `cancel1`           | Cancel safety: a `select` heartbeat drops a half-read line; keep progress in the reader, or pin one future outside the loop        |
+| `58_leaf_futures`      | `oneshot1`          | Oneshot channel leaf: store the latest waker under the value's lock, `Err(Canceled)` when the sender drops, no lost wakeups        |
+| `58_leaf_futures`      | `timer1`            | Non-blocking `Sleep`: register once with a timer thread and keep the latest waker; why `thread::sleep` in async is a bug           |
+| `58_leaf_futures`      | `yield1`            | Cooperative yielding: why `async fn yield_now() {}` never yields; a `YieldNow` leaf and a CPU loop that yields per batch           |
+| `deep-dive/`           | `raw_waker`         | Hand-written `RawWaker` + `RawWakerVTable` (four function pointers) — the real `Waker`                                             |
+| `deep-dive/`           | `self_referential`  | Self-referential struct + `Pin`/`PhantomPinned` — what `Pin` is really protecting                                                  |
+| `backend-lab/`         | `select_cancel`     | tokio `select!` over `read_exact` loses half a frame (paused time, duplex pipe); pin the read, or keep framing state in the reader |
+| `backend-lab/`         | `graceful_shutdown` | Graceful shutdown: `JoinSet` + `CancellationToken`, a `biased;` accept loop, close the queue, drain with a timeout, then abort     |
+| `backend-lab/`         | `backpressure_http` | axum handler `try_send`s into `mpsc::channel(n)`: `Full` is 503 + `Retry-After`; tower `LoadShed` over a global concurrency limit  |
+| `backend-lab/`         | `blocking_in_async` | A CPU loop on `current_thread` starves a heartbeat and a `timeout`; `spawn_blocking`, `yield_now`; `block_in_place` panics there   |
+| `backend-lab/`         | `bounded_fanout`    | At most K in flight: `Semaphore`, `JoinSet` window, `buffered` / `buffer_unordered`; ordered vs unordered, stop at the first error |
 
 **The async trinity**: `Future` defines the computation · `Waker` handles notification · `Pin` guarantees safety.
 
 ### Module 4 · Advanced: `Send` / `Sync`, atomics, and fearless concurrency
 
-| Directory           | Exercise      | Focus                                                                                                                              |
-|---------------------|---------------|------------------------------------------------------------------------------------------------------------------------------------|
-| `30_send_sync`      | `send_sync1`  | `Rc` is `!Send`; use `Arc` across threads                                                                                          |
-| `30_send_sync`      | `send_sync2`  | `Arc<Mutex<T>>` for shared mutable state                                                                                           |
-| `30_send_sync`      | `send_sync3`  | Inferring the `Send`/`Sync` marker traits, and making a type `Send + Sync`                                                         |
-| `56_async_bounds`   | `async_send1` | A std `MutexGuard` held across `.await` makes a spawned future `!Send`; why `drop(guard)` fails; end the guard's scope             |
-| `56_async_bounds`   | `async_send2` | `spawn` needs `'static`: E0521/E0373 from borrowing into tasks, `async move` and E0382; move clones or an `Arc` in                 |
-| `56_async_bounds`   | `async_send3` | `async fn` in a trait gives generics no `Send` (E0277): declare `-> impl Future + Send`, then fix the impl that breaks it          |
-| `56_async_bounds`   | `async_send4` | Dyn-compatible async trait (E0038): `Pin<Box<dyn Future + Send + 'a>>`, `Send + Sync` supertraits, lazy `Box::pin` impls           |
-| `51_scoped_threads` | `scope1`      | Why `thread::spawn` needs `'static` (E0521); `thread::scope` lets two threads borrow the caller's slice, in place, both at once    |
-| `51_scoped_threads` | `scope2`      | One disjoint `&mut` chunk per scoped thread (E0499): `chunks_mut`, the n = 0 / len = 0 edges, no lock, worker panics propagate     |
-| `51_scoped_threads` | `scope3`      | Two-phase parallel prefix sum: a shared `Barrier` sized to the real worker count before reading earlier chunks' totals             |
-| `52_condvar`        | `condvar1`    | A blocking MPMC queue: `Condvar::wait` in a `while` loop (spurious and stolen wakeups), a waiter count, lost wakeups               |
-| `52_condvar`        | `condvar2`    | A bounded queue with `not_empty` / `not_full` condvars: `try_push` hands the item back, `push` blocks, each `pop` wakes a producer |
-| `52_condvar`        | `condvar3`    | A counting semaphore from `Mutex` + `Condvar` whose `Permit` gives itself back (and wakes a waiter) in `Drop`, even on panic       |
-| `53_lock_hazards`   | `deadlock1`   | Can safe Rust deadlock? Opposite-order bank transfers: reject the same-account re-lock, lock in one global order, stay atomic      |
-| `53_lock_hazards`   | `rwlock1`     | Readers share an `RwLock` and writers wait for them; std has no upgradable read, so get-or-insert re-checks under `write()`        |
-| `54_channels`       | `channel1`    | Bounded `sync_channel` + non-blocking `try_send`: `Full` is `Busy`, `Disconnected` is `Closed`; capacity 0 is a rendezvous         |
-| `54_channels`       | `channel2`    | Disconnect-driven pipeline shutdown: drop every stray `Sender`, return on a failed `send`; drop the `Sender`, then join            |
-| `54_channels`       | `channel3`    | Actor owning a `HashMap`: a reply channel in each request (E0559 / E0026); ignore callers that left; `Gone` if the actor dies      |
-| `36_atomics`        | `atomics1`    | Lock-free `AtomicUsize` counter with `fetch_add(Relaxed)`                                                                          |
-| `36_atomics`        | `atomics2`    | `Release`/`Acquire` publish-subscribe: the happens-before edge that publishes data                                                 |
-| `36_atomics`        | `atomics3`    | A CAS-based spinlock (`compare_exchange` + `spin_loop`)                                                                            |
-| `36_atomics`        | `atomics4`    | A `compare_exchange_weak` / `fetch_update` retry loop: a bounded counter tested with a deterministic race window                   |
-| `36_atomics`        | `atomics5`    | The ABA problem, fixed with a version-tagged `(tag, idx)` head in a lock-free free list                                            |
-| `quizzes`           | `quiz5`       | Send and Sync of 14 std types (Mutex vs RwLock of Cell, Arc, &mut, MutexGuard, mpsc ends, raw pointers, dyn), probe-graded         |
-| `deep-dive/`        | `myarc`       | `Arc` from scratch: `Relaxed` clone, `Release` drop + `Acquire` fence before free                                                  |
-| `deep-dive/`        | `loom_lab`    | Model-check the `atomics2` handoff under `loom` (`--cfg loom`) — why `Relaxed` breaks                                              |
+| Directory           | Exercise       | Focus                                                                                                                              |
+|---------------------|----------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `30_send_sync`      | `send_sync1`   | `Rc` is `!Send`; use `Arc` across threads                                                                                          |
+| `30_send_sync`      | `send_sync2`   | `Arc<Mutex<T>>` for shared mutable state                                                                                           |
+| `30_send_sync`      | `send_sync3`   | Inferring the `Send`/`Sync` marker traits, and making a type `Send + Sync`                                                         |
+| `56_async_bounds`   | `async_send1`  | A std `MutexGuard` held across `.await` makes a spawned future `!Send`; why `drop(guard)` fails; end the guard's scope             |
+| `56_async_bounds`   | `async_send2`  | `spawn` needs `'static`: E0521/E0373 from borrowing into tasks, `async move` and E0382; move clones or an `Arc` in                 |
+| `56_async_bounds`   | `async_send3`  | `async fn` in a trait gives generics no `Send` (E0277): declare `-> impl Future + Send`, then fix the impl that breaks it          |
+| `56_async_bounds`   | `async_send4`  | Dyn-compatible async trait (E0038): `Pin<Box<dyn Future + Send + 'a>>`, `Send + Sync` supertraits, lazy `Box::pin` impls           |
+| `51_scoped_threads` | `scope1`       | Why `thread::spawn` needs `'static` (E0521); `thread::scope` lets two threads borrow the caller's slice, in place, both at once    |
+| `51_scoped_threads` | `scope2`       | One disjoint `&mut` chunk per scoped thread (E0499): `chunks_mut`, the n = 0 / len = 0 edges, no lock, worker panics propagate     |
+| `51_scoped_threads` | `scope3`       | Two-phase parallel prefix sum: a shared `Barrier` sized to the real worker count before reading earlier chunks' totals             |
+| `52_condvar`        | `condvar1`     | A blocking MPMC queue: `Condvar::wait` in a `while` loop (spurious and stolen wakeups), a waiter count, lost wakeups               |
+| `52_condvar`        | `condvar2`     | A bounded queue with `not_empty` / `not_full` condvars: `try_push` hands the item back, `push` blocks, each `pop` wakes a producer |
+| `52_condvar`        | `condvar3`     | A counting semaphore from `Mutex` + `Condvar` whose `Permit` gives itself back (and wakes a waiter) in `Drop`, even on panic       |
+| `53_lock_hazards`   | `deadlock1`    | Can safe Rust deadlock? Opposite-order bank transfers: reject the same-account re-lock, lock in one global order, stay atomic      |
+| `53_lock_hazards`   | `rwlock1`      | Readers share an `RwLock` and writers wait for them; std has no upgradable read, so get-or-insert re-checks under `write()`        |
+| `54_channels`       | `channel1`     | Bounded `sync_channel` + non-blocking `try_send`: `Full` is `Busy`, `Disconnected` is `Closed`; capacity 0 is a rendezvous         |
+| `54_channels`       | `channel2`     | Disconnect-driven pipeline shutdown: drop every stray `Sender`, return on a failed `send`; drop the `Sender`, then join            |
+| `54_channels`       | `channel3`     | Actor owning a `HashMap`: a reply channel in each request (E0559 / E0026); ignore callers that left; `Gone` if the actor dies      |
+| `36_atomics`        | `atomics1`     | Lock-free `AtomicUsize` counter with `fetch_add(Relaxed)`                                                                          |
+| `36_atomics`        | `atomics2`     | `Release`/`Acquire` publish-subscribe: the happens-before edge that publishes data                                                 |
+| `36_atomics`        | `atomics3`     | A CAS-based spinlock (`compare_exchange` + `spin_loop`)                                                                            |
+| `36_atomics`        | `atomics4`     | A `compare_exchange_weak` / `fetch_update` retry loop: a bounded counter tested with a deterministic race window                   |
+| `36_atomics`        | `atomics5`     | The ABA problem, fixed with a version-tagged `(tag, idx)` head in a lock-free free list                                            |
+| `quizzes`           | `quiz5`        | Send and Sync of 14 std types (Mutex vs RwLock of Cell, Arc, &mut, MutexGuard, mpsc ends, raw pointers, dyn), probe-graded         |
+| `deep-dive/`        | `myarc`        | `Arc` from scratch: `Relaxed` clone, `Release` drop + `Acquire` fence before free                                                  |
+| `deep-dive/`        | `loom_lab`     | Model-check the `atomics2` handoff under `loom` (`--cfg loom`) — why `Relaxed` breaks                                              |
+| `deep-dive/`        | `ordering_lab` | SeqCst vs `Release`/`Acquire`: store buffering, IRIW and Peterson's lock on loom, Miri and hardware; `CachePadded` false sharing   |
+| `deep-dive/`        | `treiber`      | Treiber stack on `AtomicPtr`: eager free is a use-after-free (Miri), deferred reclamation fixes it; `atomics3` spinlock on loom    |
+| `deep-dive/`        | `ffi_lab`      | Edition-2024 FFI: `unsafe extern`, honest `safe fn`, `repr(C)`, `CString` ownership, closure trampoline, `Send`-not-`Sync` handle  |
 
 > The `unsafe` use cases live in the `deep-dive/` labs, each with `// SAFETY:` comments.
-> "Read the serde/tokio source" and "the rustc frontend: AST/HIR/MIR" are further reading — see the links in each README.
+> Real tokio is in `backend-lab/` (Module 3) and serde in `config-lab/` (Traits & Abstraction);
+> "the rustc frontend: AST/HIR/MIR" is further reading — see the links in each README.
 
 ### Module 5 · Interview & debugging practice
 
@@ -206,6 +231,8 @@ cd rustlings && rustlings         # start
 | `65_performance`     | `perf1`             | Reuse the caller's `&mut String` with `clear()` + `writeln!` (pointer, capacity checked); `format_push_string` denied, `strict_clippy`     |
 | `65_performance`     | `perf2`             | `&str` and `&[impl AsRef<str>]` params that literals, slices and arrays can call (E0308); `Vec<&str>` tokens checked by pointer            |
 | `65_performance`     | `perf3`             | Length check before `zip`, one `copy_from_slice` (`strict_clippy`: `manual_memcpy`), `reserve` once then `extend_from_slice`               |
+| `deep-dive/`         | `alloc_count`       | Counting `GlobalAlloc`: predict allocs (`Rc<str>` vs `Rc<String>`, clone, collect, `format!`), then prove a zero-alloc hot path            |
+| `deep-dive/`         | `perf_lab`          | Bounds checks read from the asm (index loop, `zip`, hoisted assert), `black_box` benchmarks, an allocation release builds delete           |
 | `66_checked_math`    | `checkedmath1`      | Overflow-safe `a * b / d` on u128: exact 256-bit product via `carrying_mul`, floor and ceil without the `(x + d - 1)` overflow             |
 | `66_checked_math`    | `checkedmath2`      | Vault share math: round what the user receives down and what the user pays up, so no trade can lower the share price                       |
 | `66_checked_math`    | `checkedmath3`      | Fixed-point `Decimal(u128)` with 18 decimals: strict `FromStr`, canonical `Display`, checked mul/div through `mul_div`                     |
@@ -223,12 +250,13 @@ the "further reading" links in that module's README to revisit the design ideas.
 
 ## Roadmap
 
-What comes next for interview prep, prioritized and with compile-checked exercise
-specs: **[ROADMAP.md](ROADMAP.md)**.
+How the interview-prep extension was planned and built (compile-checked specs,
+as-built notes, and the topics still open): **[ROADMAP.md](ROADMAP.md)**.
 
 ## Directory conventions
 
 - `exercises/NN_*/` — the exercises you fix (one `.rs` per exercise) + that module's `../README.md`
 - `solutions/NN_*/` — the corresponding reference solutions
 - `deep-dive/` — a separate crate holding the labs that require `unsafe` (not subject to the exercises' `unsafe_code = "forbid"`)
+- `backend-lab/`, `config-lab/` — lab crates with crates.io dependencies (tokio / axum / tower; serde / toml / proptest), excluded from the root workspace, each with its own CI job and `README.md`
 - `../rustlings-macros/info.toml` — the exercise list and hints

@@ -49,11 +49,11 @@
 //
 // Graded tests can only show that correct code compiles. The other half of
 // the guarantee, "`send()` without `url()` does not compile", belongs in a
-// `compile_fail` doctest in the planned `api-surface-lab`. The last two tests
-// get close without one: method lookup tries a type's own (inherent) methods
-// before trait methods, so a test-local trait method named `send` is called
-// only if the `NoUrl` builder has no `send()` of its own. Try the real thing
-// yourself in `main`: `RequestBuilder::default().send();`.
+// `compile_fail` doctest, as in `deep-dive/src/api_surface.rs`. The last two
+// tests get close without one: method lookup tries a type's own (inherent)
+// methods before trait methods, so a test-local trait method named `send` is
+// called only if the `NoUrl` builder has no `send()` of its own. Try the real
+// thing yourself in `main`: `RequestBuilder::default().send();`.
 //
 // How interviewers probe this: "Make `send()` without `url()` a compile error.
 // What does it cost at run time? What is `PhantomData` for? Why seal the

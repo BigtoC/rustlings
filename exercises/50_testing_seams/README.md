@@ -85,8 +85,8 @@ keeps:
 Alternatives worth naming in an interview: a fixed-window counter (cheap, but
 allows 2x bursts at window edges), a sliding-window log (exact, O(requests)
 memory), and GCRA, which stores a single "theoretical arrival time" per key.
-The planned `backend-tokio-lab` (ROADMAP: sibling crate `backend-lab/`) tests
-async code the same way, with tokio's paused test clock
+The `backend-lab/` crate tests async code the same way, with tokio's paused
+test clock
 (`#[tokio::test(start_paused = true)]`) instead of a hand-written fake.
 
 ## The TTL Cache (seams3)

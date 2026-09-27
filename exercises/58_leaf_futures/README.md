@@ -99,9 +99,9 @@ same poll swallows the yield.
   its timer entry, while the timer in `timer1` simply fires into the void.
 - `deep-dive/src/raw_waker.rs` builds a `Waker` by hand from a
   `RawWakerVTable`, the `unsafe` layer under `std::task::Wake`.
-- The `blocking_in_async` exercise of the planned `backend-tokio-lab`
-  (`deep-dive/ROADMAP.md`) repeats `yield1`'s starvation on a real tokio
-  `current_thread` runtime and fixes it with `spawn_blocking`.
+- The `blocking_in_async` part of the `backend-lab/` crate repeats
+  `yield1`'s starvation on a real tokio `current_thread` runtime and fixes it
+  with `spawn_blocking`.
 
 ## Further Reading
 

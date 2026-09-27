@@ -28,9 +28,9 @@ After every couple of sections, there will be a quiz in this directory that'll t
    the `mpsc` channel ends, `*const u8`, `Box<dyn Fn() + Send>` and more) as
    Send and Sync, Send only, Sync only or neither. The tests ask the compiler
    itself, through an inherent-impl probe. The store-buffering and IRIW
-   litmus questions once planned for this quiz belong to the planned
-   `lock-free-ordering-lab`, and `compile_fail` checks of Send and Sync to the
-   planned `api-surface-lab` (both in `deep-dive/ROADMAP.md`).
+   litmus questions once planned for this quiz are in the
+   `deep-dive/src/ordering_lab.rs` lab, and `compile_fail` checks of Send and
+   Sync in the `deep-dive/src/api_surface.rs` lab.
 
 ### Further Reading
 

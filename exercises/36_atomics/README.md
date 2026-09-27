@@ -68,8 +68,10 @@ no longer matches. Tags wrap (32 bits: after 2^32 updates), and pointers have
 little room for them. For heap nodes on `AtomicPtr` the deeper problem is
 **memory reclamation**: T1 may read a node that T2 has already freed. Real
 code uses hazard pointers or epoch-based reclamation (`crossbeam-epoch`).
-The `unsafe` Treiber-stack follow-up is planned as a deep-dive lab
-(`lock-free-ordering-lab` in `deep-dive/ROADMAP.md`).
+The `unsafe` Treiber-stack follow-up is the deep-dive lab
+`deep-dive/src/treiber.rs`: an eager free is a use-after-free that Miri
+reports, and deferred reclamation fixes it. `deep-dive/src/ordering_lab.rs`
+covers when `SeqCst` is needed (store buffering, IRIW, Peterson's lock).
 
 The tests in parts 4 and 5 never rely on a real race showing up. They force
 the bad interleaving on a single thread through a test seam: a

@@ -102,13 +102,12 @@ A graded exercise is a binary plus its tests, so it can only prove that
 correct code compiles. No `#[test]` can assert that wrong code fails to
 compile, so the negative half of the typestate guarantee (`send()` without
 `url()` is E0599, and so is a second `url()`) is not graded as a compile error
-here. It belongs to the planned `api-surface-lab`
-(`deep-dive/src/api_surface.rs`, exercise `compile_fail_guarantees`), as
-`compile_fail` doctests for a typestate `RequestBuilder` and a `#[must_use]`
-builder, each paired with a positive doctest. The pairing matters because
-stable rustdoc does not check the error code of a `compile_fail` doctest, so a
-doctest that fails for the wrong reason would still pass. Until that lab
-exists, try `RequestBuilder::default().send();` in `typestate1`'s `main`.
+here. It lives in the `deep-dive/src/api_surface.rs` lab, as `compile_fail`
+doctests for a typestate `RequestBuilder` and a `#[must_use]` builder, each
+paired with a positive doctest. The pairing matters because stable rustdoc
+does not check the error code of a `compile_fail` doctest, so a doctest that
+fails for the wrong reason would still pass. To see the error here, try
+`RequestBuilder::default().send();` in `typestate1`'s `main`.
 
 `typestate1` gets as close as a test can. Method lookup tries a type's own
 (inherent) methods before trait methods, so a test that defines a local trait

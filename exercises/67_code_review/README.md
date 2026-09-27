@@ -110,7 +110,7 @@ own: `31_debugging`, `63_slices_strings`, `66_checked_math` and
   borrowed returns checked by pointer identity, and `&str` / `&[T]`
   parameters that accept every caller.
 - `68_mock_interviews` (next) — timed, statement-first interview sets.
-- Planned deep-dive lab `api-surface-lab` (ROADMAP) — integration tests and
+- Deep-dive lab `deep-dive/src/api_surface.rs` — integration tests and
   property tests with proptest, which find boundary inputs like the ones in
   `review1`'s bug reports without you having to guess them.
 

@@ -326,8 +326,7 @@ For the `?Sized` half: `41_memory_layout/layout1` measures the fat pointers,
 The tests in `deref1` and `deref2` spot a stray `Deref` or `DerefMut` impl
 with a run-time probe that works only on concrete types. The stricter check,
 that `name.make_ascii_uppercase()` does **not** compile, needs a
-`compile_fail` doctest; that is the planned `api-surface-lab`
-(`deep-dive/src/api_surface.rs`).
+`compile_fail` doctest; the `deep-dive/src/api_surface.rs` lab has it.
 
 ## Further Reading
 

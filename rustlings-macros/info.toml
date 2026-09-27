@@ -3724,8 +3724,8 @@ methods, so the trait's version runs only when the builder has no such method.
 A `send()` or `url()` defined for every `S` therefore fails them. These tests
 still cannot prove that the call fails to compile. Try
 `RequestBuilder::default().send();` in `main` to see E0599 with the note "the
-method was found for `RequestBuilder<HasUrl>`". The planned `api-surface-lab`
-turns that into a `compile_fail` doctest. For choosing a `PhantomData` marker
+method was found for `RequestBuilder<HasUrl>`". The `deep-dive/src/api_surface.rs`
+lab turns that into a `compile_fail` doctest. For choosing a `PhantomData` marker
 with the right variance and auto traits, see `38_variance/variance1`."""
 
 # QUIZ 4 · Method Resolution and Borrowck Verdicts
@@ -5417,7 +5417,7 @@ loop {
     }
 }
 ```
-When the timeout wins, `Select` drops only the reference, and the future lives on in the outer loop's body and resumes next round. This is the `tokio::pin!(fut); loop { select! { v = &mut fut => .. } }` pattern. What the tests reject: removing the `select` or raising the patience (heartbeats are counted exactly); polling the timeout before the line (the tie in `a_line_that_completes_on_the_timeouts_last_poll_wins` becomes a heartbeat, and with patience 0 the line is never polled at all); pinning one future for the whole stream (it is polled again after it completed); clearing `pending` at the start of `read_line`, or not emptying it after a line; collecting `char`s instead of bytes (a heartbeat falls between the two bytes of 'é'); and a `static` or thread-local buffer (two readers polled in turns would mix their partial lines). tokio's `AsyncBufReadExt::read_line` has exactly this problem, while `Lines::next_line` and tokio-util's `FramedRead` keep the buffer in the reader (fix 1) and are cancel safe. The planned `backend-tokio-lab` (`select_cancel`) in `deep-dive/ROADMAP.md` repeats this with tokio's `select!` and `read_exact`."""
+When the timeout wins, `Select` drops only the reference, and the future lives on in the outer loop's body and resumes next round. This is the `tokio::pin!(fut); loop { select! { v = &mut fut => .. } }` pattern. What the tests reject: removing the `select` or raising the patience (heartbeats are counted exactly); polling the timeout before the line (the tie in `a_line_that_completes_on_the_timeouts_last_poll_wins` becomes a heartbeat, and with patience 0 the line is never polled at all); pinning one future for the whole stream (it is polled again after it completed); clearing `pending` at the start of `read_line`, or not emptying it after a line; collecting `char`s instead of bytes (a heartbeat falls between the two bytes of 'é'); and a `static` or thread-local buffer (two readers polled in turns would mix their partial lines). tokio's `AsyncBufReadExt::read_line` has exactly this problem, while `Lines::next_line` and tokio-util's `FramedRead` keep the buffer in the reader (fix 1) and are cancel safe. The `select_cancel` part of the `backend-lab/` crate repeats this with tokio's `select!` and `read_exact`."""
 
 # MODULE 3 · Leaf Futures: External Wakeups, Timers and Cooperative Yielding
 
@@ -6040,7 +6040,7 @@ Wrong answers the tests catch:
 - Mapping both errors to `Busy`: callers would retry forever against a queue that is closed.
 - A counter next to an unbounded channel: the consumer never decrements it, so after `capacity` items every offer is `Busy` forever, even once the consumer has drained the queue or gone away.
 
-Tokio's `mpsc::channel(n)` offers the same two choices: `send(..).await` waits, `try_send` fails with `TrySendError::Full` or `Closed`. The planned deep-dive lab `backend-tokio-lab` maps `Full` to HTTP 503. See also `52_condvar/condvar2`, which builds a bounded queue by hand from a `Mutex` and two `Condvar`s."""
+Tokio's `mpsc::channel(n)` offers the same two choices: `send(..).await` waits, `try_send` fails with `TrySendError::Full` or `Closed`. The `backend-lab/` crate (`backpressure_http`) maps `Full` to HTTP 503. See also `52_condvar/condvar2`, which builds a bounded queue by hand from a `Mutex` and two `Condvar`s."""
 
 [[exercises]]
 name = "channel2"
@@ -6284,10 +6284,9 @@ the invariants. A trait object has only the auto traits its type names
 To check a type yourself, write `fn assert_send<T: Send>() {}` and call
 `assert_send::<Mutex<Cell<i32>>>();`. A false case fails to compile with E0277,
 for example "`Cell<i32>` cannot be shared between threads safely" for
-`RwLock<Cell<i32>>` as Sync. The planned `api-surface-lab` in
-`deep-dive/ROADMAP.md` turns such negative checks into `compile_fail` doctests,
-and the store-buffering questions once planned for this quiz went to the
-planned `lock-free-ordering-lab`."""
+`RwLock<Cell<i32>>` as Sync. The `deep-dive/src/api_surface.rs` lab turns
+such negative checks into `compile_fail` doctests, and the store-buffering
+questions once planned for this quiz went to `deep-dive/src/ordering_lab.rs`."""
 
 # MODULE 5 · DEBUGGING — debugging & interview drills
 
@@ -6928,7 +6927,7 @@ Passing the tests is not the whole job. `write!(out, "{}", format!(..))` still b
 - `let line = format!(..); out.push_str(&line);` and `out.push_str(format!(..).as_str())`: the same temporary, and `format_push_string` misses both.
 - `row.count.to_string()` per line.
 
-Proving zero allocations takes a counting global allocator, which needs `unsafe`: that is the planned `alloc-perf-lab` deep-dive lab.
+Proving zero allocations takes a counting global allocator, which needs `unsafe`: that is the deep-dive lab `deep-dive/tests/alloc_count.rs`.
 
 `let mut buf = std::mem::take(out);`, fill `buf`, then `*out = buf;` is fine: the same allocation leaves and comes back. `shrink_to_fit()`, a new `String::with_capacity(..)`, or `mem::swap` with a new `String` fail the pointer or capacity checks."""
 

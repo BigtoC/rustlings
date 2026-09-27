@@ -21,7 +21,7 @@
 // `chunks_exact_mut` do the cutting: safe functions built on a little
 // `unsafe` code inside std, which has proven that the pieces never overlap.
 // (A hand-rolled `split_at_mut`, and what Miri says when it gets the proof
-// wrong, is part of the planned `miri-ub-zoo` lab in `deep-dive/ROADMAP.md`.)
+// wrong, is part of the `deep-dive/src/ub_zoo.rs` lab.)
 // A `&mut [u64]` is `Send`, because `[u64]` is, so each piece can be moved
 // into its own thread.
 //

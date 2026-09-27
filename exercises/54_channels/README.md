@@ -110,8 +110,8 @@ queue built by hand from a `Mutex` and two `Condvar`s, which is what
 `sync_channel` does for you), `53_lock_hazards` (lock-order deadlocks), `31_debugging/debugging8`
 (a guard held too long) and `29_async_runtime/runtime3` (a channel as an
 executor's ready queue). The tokio versions, with HTTP 503 for a full queue
-and a graceful shutdown with `CancellationToken`, are in the planned deep-dive
-lab `backend-tokio-lab` (see `deep-dive/ROADMAP.md`).
+and a graceful shutdown with `CancellationToken`, are in the `backend-lab/`
+crate (`backpressure_http` and `graceful_shutdown`).
 
 ## Further Reading
 

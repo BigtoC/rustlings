@@ -134,11 +134,10 @@ for you. This course forbids `unsafe`, so `static mut` is out anyway:
   versus a `OnceLock` / `LazyLock` static.
 - `53_lock_hazards` (`deadlock1`, `rwlock1`) — what goes wrong once the
   global needs a lock.
-- Planned deep-dive lab `deep-dive/src/ub_zoo.rs` (ROADMAP: `miri-ub-zoo`) —
-  a write through a `&T` that was cast to a mutable pointer, which Miri
-  reports as undefined behavior and `Cell` fixes, and `unsound_covariant_cell`,
-  a hand-rolled covariant cell that lets safe code store a short-lived `&str`
-  as a `&'static str`.
+- Deep-dive lab `deep-dive/src/ub_zoo.rs` — a write through a `&T` that was
+  cast to a mutable pointer, which Miri reports as undefined behavior and
+  `Cell` fixes, and `BadCell`, a hand-rolled covariant cell that lets safe
+  code store a short-lived `&str` as a `&'static str`.
 
 ## Further Reading
 

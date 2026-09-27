@@ -106,9 +106,9 @@ not guaranteed to be at most 64 bits wide.
 Related: `34_iterators/iter1` ends an iterator with `checked_add`, and
 `44_trait_contracts/contracts1` shows the bytes a `Hash` impl feeds a hasher.
 checkedmath1's randomized comparison against an exact oracle is a
-hand-rolled property test. The planned `api-surface-lab` deep-dive lab (its
-`integration_and_proptest` part) writes such tests with proptest, which also
-shrinks a failing input to a minimal counterexample.
+hand-rolled property test. The `deep-dive/src/api_surface.rs` lab writes
+such tests with proptest, which also shrinks a failing input to a minimal
+counterexample.
 Next, `67_code_review/review1` hides an `amount * fee / 10_000` overflow, a
 `balance as u32` truncation and a `HashMap`-ordered statement in a pull
 request, without telling you where.

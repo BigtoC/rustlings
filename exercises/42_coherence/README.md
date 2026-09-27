@@ -145,9 +145,8 @@ type you implement it for. The decisions that matter (coherence3):
   lists even a defaulted trait method as "possibly-breaking".
 - **Sealing**: to let others *use* a trait but not *implement* it, seal it with
   a private supertrait. `47_type_level/typestate1` uses a sealed `State`
-  trait, and the planned `deep-dive/src/api_surface.rs` lab (the ROADMAP's
-  "testing a library from outside") drills which trait changes are
-  semver-breaking.
+  trait, and the `deep-dive/src/api_surface.rs` lab drills which trait
+  changes are semver-breaking.
 
 ## Reading the Error
 

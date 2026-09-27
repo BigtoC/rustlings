@@ -2,8 +2,11 @@
 //!
 //! These labs are the part of the advanced course that **requires `unsafe`**,
 //! so they live outside rustlings' `unsafe_code = "forbid"` constraint, as a
-//! "read + tinker" lab rather than a rustlings-style challenge. Every module
-//! ships with unit tests. Run:
+//! "read + tinker" lab rather than a rustlings-style challenge. A few need
+//! what a single-file exercise cannot have instead: doctests and integration
+//! tests seen from another crate (`api_surface`), a custom global allocator
+//! (`tests/alloc_count.rs`) or a release build (`perf_lab`). Every module
+//! ships with tests. Run:
 //!
 //! ```text
 //! cargo test --manifest-path deep-dive/Cargo.toml
@@ -24,17 +27,29 @@
 //! | [`api_surface`] | Traits & Abstraction | Testing a library from outside: `compile_fail` doctests with positive controls, sealed traits and `#[non_exhaustive]` as another crate sees them, proptest shrinking, a semver table |
 //! | [`perf_lab`] | M5 interview & debugging | Bounds checks found in the asm (`sum_indexed` vs `zip` vs a hoisted assert) and `black_box` micro-benchmarks; its partner `tests/alloc_count.rs` counts allocations with a `GlobalAlloc` |
 //!
-//! The `loom_lab` module is compiled only under `--cfg loom` (it model-checks the
-//! `atomics2` handoff across every thread interleaving). Run it with:
+//! The `loom_lab` module and the `loom_tests` modules of `ordering_lab` and
+//! `treiber` are compiled only under `--cfg loom` (they model-check atomics
+//! code across every thread interleaving). Run them with:
 //!
 //! ```text
-//! RUSTFLAGS="--cfg loom" cargo test --manifest-path deep-dive/Cargo.toml loom_lab
+//! RUSTFLAGS="--cfg loom" cargo test --manifest-path deep-dive/Cargo.toml --lib -- loom_lab:: ordering_lab::loom_tests:: treiber::loom_tests::
 //! ```
 //!
-//! And to check the raw-pointer labs for undefined behaviour under Miri:
+//! The property tests of `api_surface` (in `tests/api_surface.rs`) are
+//! compiled only under `--cfg proptest`, which also pulls in the `proptest`
+//! dev-dependency:
+//!
+//! ```text
+//! RUSTFLAGS="--cfg proptest" cargo test --manifest-path deep-dive/Cargo.toml --test api_surface
+//! ```
+//!
+//! To check the labs for undefined behavior under Miri (this runs every
+//! non-ignored test and doctest; `ub_zoo`'s `#[ignore]`d `ub_*` cases are
+//! checked one by one by `scripts/check_ub_zoo.sh`):
 //!
 //! ```text
 //! cargo +nightly miri test --manifest-path deep-dive/Cargo.toml
+//! bash deep-dive/scripts/check_ub_zoo.sh
 //! ```
 
 pub mod api_surface;

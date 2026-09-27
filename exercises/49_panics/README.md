@@ -79,11 +79,10 @@ unwinds, that aborts. That is why a `drop` must never panic, and why
 `extern "C-unwind" fn` (Rust 1.71) lets a panic unwind into its caller, which
 must be prepared for it; FFI code that calls Rust callbacks usually catches
 the panic at the boundary instead, turns it into an error code, and resumes
-it on the Rust side with `std::panic::resume_unwind`. The planned FFI lab (`deep-dive/src/ffi_lab.rs`,
-ROADMAP "Lab: FFI with edition-2024 unsafe extern and safe fn, repr(C),
-CString ownership, closure trampolines") catches a callback's panic at such a
-boundary, shows `extern "C-unwind"`, and checks the `extern "C"` abort in a
-child process.
+it on the Rust side with `std::panic::resume_unwind`. The FFI lab
+(`deep-dive/src/ffi_lab.rs`) catches a callback's panic at such a boundary,
+shows `extern "C-unwind"`, and checks the `extern "C"` abort in a child
+process.
 
 **Why choose `panic = "abort"`?** Smaller, sometimes faster binaries (your
 code needs no landing pads for the unwinding path), and a service under a

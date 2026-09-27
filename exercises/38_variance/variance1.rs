@@ -70,8 +70,8 @@
 //
 // How do you TEST that a type is not `Send`? An `assert_send::<X>()` call can
 // only prove that it is. The honest tool is a `compile_fail` doctest, which a
-// single-file exercise cannot have (the planned `api-surface-lab` deep-dive
-// lab uses them). The tests below use the trick of the `impls` crate instead:
+// single-file exercise cannot have (the `deep-dive/src/api_surface.rs` lab
+// uses them). The tests below use the trick of the `impls` crate instead:
 // an inherent associated const wins over a trait's, but only when the
 // inherent impl's bounds hold, so `Probe::<X>::IS_SEND` is `true` exactly when
 // `X: Send`. It works for concrete types only. Inside a generic function the

@@ -17,8 +17,8 @@
 //     drop the per-iteration checks. (Re-slicing, `let b = &b[..a.len()];`,
 //     gives it the same fact, but does not reject a `b` that is longer.)
 //     "Usually" means: confirm it in the assembly (no call to
-//     `panic_bounds_check` in the loop), as the planned `alloc-perf-lab`
-//     deep-dive lab does. A `debug_assert!` does not count: it is compiled
+//     `panic_bounds_check` in the loop), as the `deep-dive/src/perf_lab.rs`
+//     lab does. A `debug_assert!` does not count: it is compiled
 //     out of release builds, and the contract with it.
 //   - Use the bulk operation std already has. `dst.copy_from_slice(src)` is
 //     one `memcpy`. It panics unless both slices have the same length, so

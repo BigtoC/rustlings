@@ -63,26 +63,51 @@ jobs:
         run: cargo fmt --manifest-path deep-dive/Cargo.toml --check
       - name: Clippy
         run: cargo clippy --manifest-path deep-dive/Cargo.toml --all-targets -- --deny warnings
-      # `loom_lab` is `#[cfg(loom)]`, so the step above never compiles it. Lint it
-      # under the cfg that makes it exist.
+      # `loom_lab` and the `loom_tests` modules of `ordering_lab` and `treiber`
+      # are `#[cfg(loom)]`, so the step above never compiles them. Lint them
+      # under the cfg that makes them exist.
       - name: Clippy (loom)
         env:
           RUSTFLAGS: --cfg loom
+        run: cargo clippy --manifest-path deep-dive/Cargo.toml --all-targets -- --deny warnings
+      # The property tests in `tests/api_surface.rs` are `#[cfg(proptest)]`, and
+      # proptest itself is a dev-dependency only under that cfg, so the steps
+      # above never compile them. Lint them under the cfg that makes them exist.
+      - name: Clippy (proptest)
+        env:
+          RUSTFLAGS: --cfg proptest
         run: cargo clippy --manifest-path deep-dive/Cargo.toml --all-targets -- --deny warnings
       - name: cargo test
         env:
           RUST_BACKTRACE: 1
         run: cargo test --manifest-path deep-dive/Cargo.toml
+      # alloc_count's checked counts must also hold with optimizations on: the
+      # optimizer may delete allocations (see tests/alloc_count.rs).
+      - name: alloc_count (release)
+        run: cargo test --manifest-path deep-dive/Cargo.toml --release --test alloc_count
       - name: loom model check
         env:
           RUSTFLAGS: --cfg loom
-        # A name-filtered `cargo test` exits 0 when the filter matches nothing, so
-        # assert the loom tests really ran — otherwise a cfg/name drift would leave
-        # this step green while model-checking nothing.
+        # A name-filtered `cargo test` exits 0 when the filters match nothing, so
+        # assert that loom tests from EVERY loom-checked module really ran;
+        # otherwise a cfg/name drift would leave this step green while
+        # model-checking nothing. All loom models live in the library (`--lib`).
         run: |
-          cargo test --manifest-path deep-dive/Cargo.toml loom_lab > loom.log 2>&1 || { cat loom.log; exit 1; }
+          cargo test --manifest-path deep-dive/Cargo.toml --lib -- loom_lab:: ordering_lab::loom_tests:: treiber::loom_tests:: > loom.log 2>&1 || { cat loom.log; exit 1; }
           cat loom.log
-          grep -qE '^test loom_lab::tests::' loom.log || { echo "No loom test ran: loom_lab was compiled away."; exit 1; }
+          for module in loom_lab::tests ordering_lab::loom_tests treiber::loom_tests; do
+            grep -qE "^test ${module}::" loom.log || { echo "No loom test ran in ${module}: it was compiled away or renamed."; exit 1; }
+          done
+      - name: proptest (api_surface)
+        env:
+          RUSTFLAGS: --cfg proptest
+        # Like the loom step: if the cfg stopped matching, the `props` module would
+        # compile away and the run would still exit 0, so assert that a property
+        # test really passed.
+        run: |
+          cargo test --manifest-path deep-dive/Cargo.toml --test api_surface > proptest.log 2>&1 || { cat proptest.log; exit 1; }
+          cat proptest.log
+          grep -qE '^test props::[^ ]+ \.\.\. ok$' proptest.log || { echo "No property test ran: the props module was compiled away."; exit 1; }
   # The deep-dive labs are `unsafe` on purpose; `cargo test` only proves they give
   # the right answers, not that they are free of undefined behaviour. Miri
   # interprets the tests and rejects UB (aliasing violations, use-after-free,
@@ -111,6 +136,84 @@ jobs:
         env:
           MIRIFLAGS: -Zmiri-tree-borrows -Zmiri-strict-provenance
         run: cargo +nightly miri test --manifest-path deep-dive/Cargo.toml
+      # The zoo's `ub_*` tests are #[ignore]d, so the two steps above never run
+      # them. Run each one alone, under both aliasing models, and check that Miri
+      # still reports that test's expected diagnostic (the `// miri-expect` line
+      # above it). The script also fails if it finds no `ub_*` test at all. If a
+      # new nightly rewords a diagnostic, the log shows Miri's actual lines.
+      - name: Miri (the UB zoo is still UB)
+        run: bash deep-dive/scripts/check_ub_zoo.sh
+  # `backend-lab` depends on tokio, axum and tower, so it is excluded from the
+  # workspace like `deep-dive`, and none of the jobs above reach it.
+  backend-lab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: swatinem/rust-cache@v2
+        with:
+          # `backend-lab` is its own workspace root and builds into `backend-lab/target`.
+          workspaces: backend-lab -> target
+      - name: rustfmt
+        run: cargo fmt --manifest-path backend-lab/Cargo.toml --check
+      - name: Clippy
+        run: cargo clippy --manifest-path backend-lab/Cargo.toml --all-targets -- --deny warnings
+      - name: cargo test
+        env:
+          RUST_BACKTRACE: 1
+        run: cargo test --manifest-path backend-lab/Cargo.toml
+  # `config-lab` depends on crates.io crates (serde, toml, proptest) and is
+  # excluded from the workspace, so none of the jobs above reach it. It is a
+  # lab about Cargo features, so check every feature set: a serde derive that
+  # is not behind `cfg_attr` breaks only `--no-default-features`.
+  config-lab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: config-lab -> target
+      - name: rustfmt
+        run: cargo fmt --manifest-path config-lab/Cargo.toml --check
+      - name: Clippy (each feature set)
+        run: |
+          for features in "" --no-default-features --all-features; do
+            echo "== cargo clippy $features"
+            cargo clippy --manifest-path config-lab/Cargo.toml --all-targets $features -- --deny warnings
+          done
+      # build.rs sets `config_lab_has_floor_char_boundary` on Rust 1.91+; the
+      # variable makes it take the pre-1.91 fallback path instead.
+      - name: Clippy (pre-1.91 fallback)
+        env:
+          CONFIG_LAB_FORCE_FALLBACK: "1"
+        run: cargo clippy --manifest-path config-lab/Cargo.toml --all-targets -- --deny warnings
+      - name: cargo test (each feature set)
+        env:
+          RUST_BACKTRACE: 1
+        run: |
+          for features in "" --no-default-features --all-features; do
+            echo "== cargo test $features"
+            cargo test --manifest-path config-lab/Cargo.toml $features
+          done
+      - name: cargo test (pre-1.91 fallback)
+        env:
+          RUST_BACKTRACE: 1
+          CONFIG_LAB_FORCE_FALLBACK: "1"
+        run: cargo test --manifest-path config-lab/Cargo.toml
+      # Intra-doc links to feature-gated items break only in some feature sets.
+      - name: rustdoc (with and without default features)
+        env:
+          RUSTDOCFLAGS: --deny warnings
+        run: |
+          for features in "" --no-default-features; do
+            echo "== cargo doc $features"
+            cargo doc --manifest-path config-lab/Cargo.toml --no-deps $features
+          done
+      # `rust-version = "1.85"`: prove it, on a compiler where build.rs leaves
+      # the cfg unset.
+      - name: cargo test (Rust 1.85, the MSRV)
+        run: |
+          rustup toolchain install 1.85 --profile minimal --no-self-update
+          cargo +1.85 test --manifest-path config-lab/Cargo.toml
   rumdl:
       runs-on: ubuntu-latest
       steps:

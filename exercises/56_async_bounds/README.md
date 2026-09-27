@@ -181,9 +181,8 @@ bound, and there are several ways to add one:
    trait `Send + Sync`, and rewrite both impls with `Box::pin(async move {
    .. })`, keeping the futures lazy.
 
-Real tokio (`spawn_blocking`, `select!`, graceful shutdown) is the planned
-`backend-tokio-lab` deep-dive lab (a sibling crate `backend-lab/`, see
-`deep-dive/ROADMAP.md`).
+Real tokio (`spawn_blocking`, `select!`, graceful shutdown) is in the
+`backend-lab/` crate, a lab with tokio, axum and tower dependencies.
 
 ## Further Reading
 

@@ -148,9 +148,9 @@ protects; async recursion and a projection lab are listed under
    the reader, or keep one `read_line` future alive across heartbeats.
 
 Next: `58_leaf_futures` writes the leaf futures that these combinators
-compose (a oneshot channel, a real timer, cooperative yielding). The planned
-`backend-tokio-lab` in `deep-dive/ROADMAP.md` (`select_cancel`) repeats the
-`cancel1` bug with tokio's real `select!` and `read_exact`.
+compose (a oneshot channel, a real timer, cooperative yielding). The
+`backend-lab/` crate's `select_cancel` part (`backend-lab/src/select_cancel.rs`)
+repeats the `cancel1` bug with tokio's real `select!` and `read_exact`.
 
 ## Further Reading
 

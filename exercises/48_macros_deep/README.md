@@ -187,8 +187,7 @@ is a pre-`$crate` migration tool; the Reference discourages it in new code.
   that flag, and `trace_macros!`, are nightly-only.
 - Testing that a misuse (like `max!()`) fails to compile needs a
   `compile_fail` doctest or `trybuild`, which single-file exercises cannot
-  host; that is the planned `api-surface-lab` in `deep-dive/ROADMAP.md`
-  ("Lab: testing a library from outside").
+  host; the `deep-dive/src/api_surface.rs` lab has such a doctest.
 
 ## Exercise Path
 

@@ -126,8 +126,8 @@ a safe function) and to remove the API. Its replacement,
 `std::thread::scope` (1.63), takes a closure and joins every thread before it
 returns, so no destructor has to run.
 
-The planned `deep-dive/src/ub_zoo.rs` lab (ROADMAP: "Lab: what exactly is UB,
-run under Miri") shows Miri reporting a leak that is not undefined behavior.
+The `deep-dive/src/ub_zoo.rs` lab shows Miri reporting a leak that is not
+undefined behavior.
 
 ## Exercise Path
 

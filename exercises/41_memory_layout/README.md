@@ -168,8 +168,9 @@ without a reference, but reading through it needs `unsafe` and
 - `33_closures`: the capture modes that decide a closure's fields, in depth.
 - `45_sized_deref/borrow1`: an `Rc<str>` string interner, and why
   `HashSet<Rc<String>>` cannot be looked up with a `&str`.
-- Planned: `repr(align(128))` cache-line padding against false sharing, in the
-  deep-dive `lock-free-ordering-lab` (see `deep-dive/ROADMAP.md`).
+- `deep-dive/src/ordering_lab.rs`: `repr(align(128))` cache-line padding
+  (`CachePadded`) against false sharing, with its layout asserted and a
+  benchmark.
 
 ## Further Reading
 

@@ -135,9 +135,9 @@ the time left on every pass. `wait_timeout_while` does both for you.
 - `deep-dive/src/loom_lab.rs` — `loom` explores every interleaving of a small
   concurrent test. It also ships a mock `Condvar`, so these queues could be
   model-checked the same way.
-- Planned deep-dive lab `backend-lab/` (ROADMAP: `backend-tokio-lab`) —
-  backpressure at the HTTP edge: a handler `try_send`s into a bounded tokio
-  channel and answers 503 when it is full.
+- Lab crate `backend-lab/` (`backpressure_http`) — backpressure at the HTTP
+  edge: a handler `try_send`s into a bounded tokio channel and answers 503
+  when it is full.
 
 ## Further Reading
 

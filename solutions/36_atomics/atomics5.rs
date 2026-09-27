@@ -39,8 +39,8 @@
 // reclamation (`crossbeam-epoch`), not with tags alone. Tagging a pointer
 // is also harder: a 64-bit pointer has only a few spare bits (unused high
 // address bits, alignment bits), and std has no stable 128-bit atomic for a
-// double-width CAS. The `unsafe` pointer version is the Treiber-stack lab
-// planned in deep-dive/ROADMAP.md (`lock-free-ordering-lab`).
+// double-width CAS. The `unsafe` pointer version is the Treiber-stack lab,
+// deep-dive/src/treiber.rs.
 //
 // To make the bad interleaving deterministic, `pop` is split into
 // `pop_begin` (the snapshot) and `pop_commit` (the CAS). The tests run T2's

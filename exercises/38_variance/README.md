@@ -118,9 +118,9 @@ tells the checker that the elements get dropped.
 ### Testing That Something Is *Not* `Send`
 
 `assert_send::<X>()` can only prove that `X` is `Send`. The proper tool for
-the opposite is a `compile_fail` doctest, which the planned deep-dive lab
-`api-surface-lab` (ROADMAP: "testing a library from outside") adds, together
-with a positive control. The `variance1` tests use the trick of the
+the opposite is a `compile_fail` doctest, which the deep-dive lab
+`deep-dive/src/api_surface.rs` has, together with a positive control. The
+`variance1` tests use the trick of the
 [`impls`](https://docs.rs/impls) crate instead:
 
 ```rust
@@ -183,10 +183,9 @@ than a borrow of `self`, which `Interner::get` relies on),
 `37_borrowck_errors/borrowck4` (no downgrade from `&mut`),
 `40_interior_mutability` (why every cell is invariant), `47_type_level/typestate1`
 (a `PhantomData` state marker), `30_send_sync` (the auto-trait rules in depth)
-and `59_arena` (typed ids in practice). The planned deep-dive lab
-`deep-dive/src/ub_zoo.rs` (ROADMAP: `miri-ub-zoo`) has
-`unsound_covariant_cell`, a cell with the wrong marker that lets safe code
-read freed memory.
+and `59_arena` (typed ids in practice). The deep-dive lab
+`deep-dive/src/ub_zoo.rs` has `BadCell`, a cell with the wrong marker that
+lets safe code read freed memory.
 
 ## Further Reading
 
