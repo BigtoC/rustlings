@@ -16,7 +16,18 @@ path = "src/lib.rs"
 [target.'cfg(loom)'.dependencies]
 loom = "0.7"
 
-# `loom` is a known custom cfg (set via RUSTFLAGS="--cfg loom"); declare it so the
-# unexpected_cfgs lint stays quiet on normal builds.
+# `proptest` is pulled in ONLY under `--cfg proptest`, like loom above: a plain
+# `cargo test` never builds it. The property tests in `tests/api_surface.rs`
+# are `#[cfg(proptest)]` as well. Run them with:
+#   RUSTFLAGS="--cfg proptest" cargo test --manifest-path deep-dive/Cargo.toml --test api_surface
+# Default features are off: the lab runs no test case in a subprocess or under
+# a timeout and generates no bit sets, so it skips `fork`, `timeout` and
+# `bit-set` (rusty-fork, tempfile, bit-set, bit-vec).
+[target.'cfg(proptest)'.dev-dependencies]
+proptest = { version = "1", default-features = false, features = ["std"] }
+
+# `loom` and `proptest` are known custom cfgs (set via RUSTFLAGS="--cfg loom" or
+# "--cfg proptest"); declare them so the unexpected_cfgs lint stays quiet on
+# normal builds.
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(proptest)'] }

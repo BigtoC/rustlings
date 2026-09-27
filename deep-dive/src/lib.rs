@@ -18,6 +18,7 @@
 //! | [`vtable_lab`] | Traits & dispatch | A `&dyn Trait` fat pointer, by hand: a data pointer plus a static table of function pointers |
 //! | [`myarc`] | Concurrency | `Arc` from scratch: an atomic strong count, and why `clone` can be `Relaxed` but `drop` needs `Release` + an `Acquire` fence |
 //! | [`ub_zoo`] | M1 memory model | Undefined behavior case by case under Miri: aliasing, invalid values, use-after-free, data races, library UB, and an unsound covariant cell |
+//! | [`api_surface`] | Traits & Abstraction | Testing a library from outside: `compile_fail` doctests with positive controls, sealed traits and `#[non_exhaustive]` as another crate sees them, proptest shrinking, a semver table |
 //!
 //! The `loom_lab` module is compiled only under `--cfg loom` (it model-checks the
 //! `atomics2` handoff across every thread interleaving). Run it with:
@@ -32,6 +33,7 @@
 //! cargo +nightly miri test --manifest-path deep-dive/Cargo.toml
 //! ```
 
+pub mod api_surface;
 pub mod myarc;
 pub mod raw_vec;
 pub mod raw_waker;
