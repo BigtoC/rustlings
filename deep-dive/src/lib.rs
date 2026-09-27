@@ -17,6 +17,7 @@
 //! | [`self_referential`] | M3 async | Why a self-referential struct cannot be moved, and what `Pin` is really protecting |
 //! | [`vtable_lab`] | Traits & dispatch | A `&dyn Trait` fat pointer, by hand: a data pointer plus a static table of function pointers |
 //! | [`myarc`] | Concurrency | `Arc` from scratch: an atomic strong count, and why `clone` can be `Relaxed` but `drop` needs `Release` + an `Acquire` fence |
+//! | [`ub_zoo`] | M1 memory model | Undefined behavior case by case under Miri: aliasing, invalid values, use-after-free, data races, library UB, and an unsound covariant cell |
 //!
 //! The `loom_lab` module is compiled only under `--cfg loom` (it model-checks the
 //! `atomics2` handoff across every thread interleaving). Run it with:
@@ -35,6 +36,7 @@ pub mod myarc;
 pub mod raw_vec;
 pub mod raw_waker;
 pub mod self_referential;
+pub mod ub_zoo;
 pub mod unsafe_list;
 pub mod vtable_lab;
 
