@@ -1,0 +1,48 @@
+# Lab crate: serde at the boundary and additive Cargo features.
+#
+# It depends on crates.io crates (serde, toml, proptest), so it is not part of
+# the rustlings workspace: the root Cargo.toml lists it under `exclude`, and CI
+# checks it in its own job, once per feature set. Run it with:
+#   cargo test --manifest-path config-lab/Cargo.toml
+[package]
+name = "config-lab"
+version = "0.1.0"
+edition = "2024"
+# Edition 2024, toml 1.x and proptest 1.11 all need Rust 1.85 (CI tests the
+# crate with 1.85 too). Newer std APIs are used only behind the cfg that
+# build.rs sets after checking the compiler version.
+rust-version = "1.85"
+publish = false
+
+[features]
+# What a plain `cargo build` gets. `--no-default-features` turns it off, and the
+# crate must still compile: that is what the `cfg_attr` gating in src/ is for.
+default = ["serde"]
+# ADDITIVE: adds the Serialize/Deserialize impls and the TOML functions, and
+# changes nothing that exists without it. The `dep:` prefix stops the optional
+# dependencies from becoming features of their own, so this feature can be
+# called `serde` even though a dependency has the same name.
+serde = ["dep:serde", "dep:toml"]
+# ANTI-PATTERN, kept on purpose (see README.md, "Why features must be
+# additive"): it REMOVES the unknown-key check. Feature unification turns it
+# on for every crate in the build as soon as one of them asks for it.
+lenient = ["serde"]
+
+[dependencies]
+serde = { version = "1", optional = true, features = ["derive"] }
+# Only the toml features this crate uses (the root workspace does the same).
+toml = { version = "1", optional = true, default-features = false, features = ["std", "parse", "display", "serde"] }
+
+[dev-dependencies]
+# Only `std`: no process forking or timeouts, so fewer dependencies to build.
+proptest = { version = "1", default-features = false, features = ["std"] }
+
+# The TOML tests need the `serde` feature. With `required-features`, Cargo
+# skips this target under `--no-default-features` instead of failing to build
+# it.
+[[test]]
+name = "serde_boundary"
+required-features = ["serde"]
+
+[lints.rust]
+unsafe_code = "forbid"

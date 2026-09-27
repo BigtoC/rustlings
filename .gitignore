@@ -2,6 +2,9 @@
 target/
 Cargo.lock
 !/Cargo.lock
+# The lab crates with crates.io dependencies pin the versions their tests were
+# checked against.
+!/config-lab/Cargo.lock
 
 # State file
 .rustlings-state.txt
