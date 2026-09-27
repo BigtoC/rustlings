@@ -22,6 +22,7 @@
 //! | [`ffi_lab`] | M1 memory / Concurrency | FFI in edition 2024: `unsafe extern` and honest `safe fn`, `repr(C)`, `CString` ownership, a closure through a C callback, a `Send`-but-not-`Sync` C handle |
 //! | [`ub_zoo`] | M1 memory model | Undefined behavior case by case under Miri: aliasing, invalid values, use-after-free, data races, library UB, and an unsound covariant cell |
 //! | [`api_surface`] | Traits & Abstraction | Testing a library from outside: `compile_fail` doctests with positive controls, sealed traits and `#[non_exhaustive]` as another crate sees them, proptest shrinking, a semver table |
+//! | [`perf_lab`] | M5 interview & debugging | Bounds checks found in the asm (`sum_indexed` vs `zip` vs a hoisted assert) and `black_box` micro-benchmarks; its partner `tests/alloc_count.rs` counts allocations with a `GlobalAlloc` |
 //!
 //! The `loom_lab` module is compiled only under `--cfg loom` (it model-checks the
 //! `atomics2` handoff across every thread interleaving). Run it with:
@@ -40,6 +41,7 @@ pub mod api_surface;
 pub mod ffi_lab;
 pub mod myarc;
 pub mod ordering_lab;
+pub mod perf_lab;
 pub mod raw_vec;
 pub mod raw_waker;
 pub mod self_referential;

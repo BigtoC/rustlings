@@ -10,6 +10,14 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+# `tests/alloc_count.rs` installs a counting `#[global_allocator]` and has its
+# own `main` (no libtest harness), which confines that allocator to this one
+# test binary: the library's unit tests and the other labs never see it.
+[[test]]
+name = "alloc_count"
+path = "tests/alloc_count.rs"
+harness = false
+
 # `loom` is pulled in ONLY under `--cfg loom`, so a plain `cargo test` neither
 # fetches nor builds it. The `loom_lab` module and the `loom_tests` modules of
 # `ordering_lab` and `treiber` (also `#[cfg(loom)]`) then swap in loom's
